@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TOKEN = "SEU_TOKEN_AQUI"
+TOKEN = "8639202398:AAGC9qhVVKRiMlErRaibQ3jdx9qCS2AieHk"
 
 
 # ✅ Função segura (NÃO VAI MAIS QUEBRAR)
