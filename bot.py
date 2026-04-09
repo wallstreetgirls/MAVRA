@@ -111,10 +111,10 @@ async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_ex
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💎 Crypto Intel Zone — Análises e Operações", callback_data="vip")],
-        [InlineKeyboardButton("📊 Conteudo gratuito", callback_data="conteudo")],
+        [InlineKeyboardButton("📊 Conteúdo gratuito", callback_data="conteudo")],
         [InlineKeyboardButton("🎓 Mentoria", callback_data="mentoria")],
         [InlineKeyboardButton("🤝 Parceiro Externo — AE Crypto", callback_data="sinais")],
-        [InlineKeyboardButton("📋 Enviar comprovante — acesso ao grupo premium", callback_data="pagar_vip")],
+        [InlineKeyboardButton("✅ Enviar comprovante", callback_data="pagar_vip")],
         [InlineKeyboardButton("💬 Suporte", url=SUPORTE_LINK)],
     ]
     await update.message.reply_text(
@@ -124,13 +124,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Você aprende a ler o mercado.\n\n"
         "─────────────────────\n"
         "🟡 *Quer entrar no Crypto Intel Zone?*\n"
-        "Nosso grupo premium de analises e operacoes ao vivo.\n\n"
-        "1️⃣ Clique em *Crypto Intel Zone* abaixo\n"
-        "2️⃣ Escolha sua forma de acesso (corretora parceira ou assinatura)\n"
-        "3️⃣ Siga as instruções e envie o UID ou comprovante aqui no bot\n"
-        "4️⃣ A gente valida e manda o link do canal pra voce ✅\n\n"
+        "Nosso grupo premium de análises e operações ao vivo.\n\n"
+        "1️⃣ Clique em *Crypto Intel Zone* e escolha sua forma de acesso\n"
+        "2️⃣ Crie sua conta na corretora parceira ou efetue o pagamento\n"
+        "3️⃣ Retorne ao bot e selecione *✅ Enviar comprovante*\n"
+        "4️⃣ A gente valida e manda o link do grupo pra você! ✅\n\n"
         "─────────────────────\n"
-        "👇 Escolha como quer comecar:",
+        "👇 Escolha como quer começar:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
@@ -143,7 +143,8 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("1️⃣ Criar conta MEXC (gratuito)", url=MEXC_LINK)],
             [InlineKeyboardButton("2️⃣ Criar conta BingX (gratuito)", url=BINGX_LINK)],
-            [InlineKeyboardButton("3️⃣ Assinar por R$49,90/mes 💳", callback_data="pagar_vip")],
+            [InlineKeyboardButton("3️⃣ Assinar por R$49,90/mês 💳", callback_data="pagar_vip")],
+            [InlineKeyboardButton("✅ Enviar comprovante", callback_data="pagar_vip")],
         ]
         await query.message.reply_text(
             "💎 *Crypto Intel Zone — grupo premium de analises e operacoes*\n\n"
@@ -355,4 +356,3 @@ def main():
  
 if __name__ == "__main__":
     main()
- 
