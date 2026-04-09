@@ -5,7 +5,7 @@ import json
 import datetime
  
 TOKEN        = os.getenv("TOKEN")
-Premium_GROUP_ID = -1002336704499
+VIP_GROUP_ID = -1002336704499
 ADMIN_ID     = 8671065515
  
 INFINITEPAY_LINK = "https://link.infinitepay.io/uppr/VC1DLTEtSQ-1u1nnH5til-49,90"
@@ -34,7 +34,7 @@ aguardando_comprovante = set()
  
 async def registrar_e_notificar(context, user_id, nome, username, via):
     link_obj = await context.bot.create_chat_invite_link(
-        chat_id=Premium_GROUP_ID,
+        chat_id=VIP_GROUP_ID,
         member_limit=1,
         expire_date=datetime.datetime.now() + datetime.timedelta(hours=48),
     )
@@ -59,7 +59,7 @@ async def registrar_e_notificar(context, user_id, nome, username, via):
             "👇 Clique no link abaixo para entrar:\n"
             + link + "\n\n"
             "⚠️ O link e de uso unico e expira em 48h.\n"
-            "Nao compartilhe com ninguem!\n\n"
+            "Não compartilhe com ninguem!\n\n"
             "Qualquer duvida: @suportewsg"
         ),
         parse_mode="Markdown"
@@ -91,7 +91,7 @@ async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_ex
         InlineKeyboardButton("❌ Recusar", callback_data="recusar_" + str(user_id)),
     ]]
     texto = (
-        "📋 *Nova solicitacao de acesso!*\n\n"
+        "📋 *Nova solicitação de acesso!*\n\n"
         "👤 Nome: " + nome + "\n"
         "🔗 Username: " + username + "\n"
         "🆔 ID: " + str(user_id) + "\n"
@@ -110,23 +110,24 @@ async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_ex
  
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("💎 Crypto Intel Zone — Analises e Operacoes", callback_data="vip")],
-        [InlineKeyboardButton("⚡ Sinais AE Crypto (parceiro externo)", callback_data="sinais")],
-        [InlineKeyboardButton("🎓 Mentoria", callback_data="mentoria")],
+        [InlineKeyboardButton("💎 Crypto Intel Zone — Análises e Operações", callback_data="vip")],
         [InlineKeyboardButton("📊 Conteudo gratuito", callback_data="conteudo")],
+        [InlineKeyboardButton("🎓 Mentoria", callback_data="mentoria")],
+        [InlineKeyboardButton("🤝 Parceiro Externo — AE Crypto", callback_data="sinais")],
+        [InlineKeyboardButton("📋 Enviar comprovante — acesso ao grupo premium", callback_data="pagar_vip")],
         [InlineKeyboardButton("💬 Suporte", url=SUPORTE_LINK)],
     ]
     await update.message.reply_text(
         "💎 *Wall Street Girls*\n\n"
-        "Um ecossistema para quem quer operar com estrategia e consistencia.\n\n"
-        "Aqui voce nao depende de sorte.\n"
-        "Voce aprende a ler o mercado.\n\n"
+        "Um ecossistema para quem quer operar com estratégia e consistência.\n\n"
+        "Aqui você não depende de sorte.\n"
+        "Você aprende a ler o mercado.\n\n"
         "─────────────────────\n"
         "🟡 *Quer entrar no Crypto Intel Zone?*\n"
         "Nosso grupo premium de analises e operacoes ao vivo.\n\n"
         "1️⃣ Clique em *Crypto Intel Zone* abaixo\n"
         "2️⃣ Escolha sua forma de acesso (corretora parceira ou assinatura)\n"
-        "3️⃣ Siga as instrucoes e envie o UID ou comprovante aqui no bot\n"
+        "3️⃣ Siga as instruções e envie o UID ou comprovante aqui no bot\n"
         "4️⃣ A gente valida e manda o link do canal pra voce ✅\n\n"
         "─────────────────────\n"
         "👇 Escolha como quer comecar:",
@@ -142,34 +143,33 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("1️⃣ Criar conta MEXC (gratuito)", url=MEXC_LINK)],
             [InlineKeyboardButton("2️⃣ Criar conta BingX (gratuito)", url=BINGX_LINK)],
-            [InlineKeyboardButton("✅ Ja criei minha conta — enviar UID", callback_data="validar_uid")],
             [InlineKeyboardButton("3️⃣ Assinar por R$49,90/mes 💳", callback_data="pagar_vip")],
         ]
         await query.message.reply_text(
             "💎 *Crypto Intel Zone — grupo premium de analises e operacoes*\n\n"
-            "Aqui voce nao recebe sinal de terceiro.\n"
-            "Voce acompanha *a gente operando ao vivo.*\n\n"
+            "Aqui você não recebe sinal de terceiro.\n"
+            "Você acompanha *a gente operando ao vivo.*\n\n"
             "Cada entrada explicada. Cada saida justificada.\n"
-            "Voce aprende enquanto lucra.\n\n"
-            "✅ *O que voce encontra aqui:*\n"
-            "📊 Analises tecnicas feitas por nos\n"
-            "🎯 Entradas e saidas com explicacao completa\n"
-            "🎥 Operacoes ao vivo em tempo real\n"
-            "🧠 Raciocinio por tras de cada decisao\n"
+            "Você aprende enquanto lucra.\n\n"
+            "✅ *O que você encontra aqui:*\n"
+            "📊 Análises técnicas feitas por nos\n"
+            "🎯 Entradas e saídas com explicação completa\n"
+            "🎥 Operações ao vivo em tempo real\n"
+            "🧠 Raciocínio por tras de cada decisão\n"
             "💬 Comunidade exclusiva de traders\n\n"
-            "Nao e sinal pronto para copiar.\n"
+            "Não é sinal pronto para copiar.\n"
             "E voce entendendo o mercado de verdade.\n\n"
             "─────────────────────\n"
             "🟡 *3 formas de entrar:*\n\n"
             "1️⃣ *MEXC - gratuito*\n"
-            "Crie sua conta pelo nosso link. Apos criar, volte aqui e clique em "
-            "*Ja criei minha conta* para enviar seu UID.\n\n"
+            "Crie sua conta pelo nosso link. Apos criar, volte ao menu principal e clique em "
+            "*Enviar comprovante* para enviar seu UID e liberar o acesso.\n\n"
             "2️⃣ *BingX - gratuito*\n"
-            "Mesma coisa pela BingX. Crie pelo nosso link, volte aqui e clique em "
-            "*Ja criei minha conta* para enviar seu UID.\n\n"
+            "Mesma coisa pela BingX. Crie pelo nosso link, volte ao menu principal e clique em "
+            "*Enviar comprovante* para enviar seu UID.\n\n"
             "3️⃣ *Assinatura - R$49,90/mes*\n"
-            "Ja tem corretora ou prefere assinar direto? Sem problema. "
-            "Apos o pagamento, volte aqui e envie o comprovante.\n\n"
+            "Ja tem corretora ou prefere assinar direto? Clique abaixo, efetue o pagamento e "
+            "envie o comprovante pelo menu principal para liberar o acesso.\n\n"
             "─────────────────────\n"
             "👇 Escolha sua forma de acesso:",
             parse_mode="Markdown",
@@ -179,7 +179,7 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "validar_uid":
         aguardando_uid.add(query.from_user.id)
         await query.message.reply_text(
-            "✅ *Otimo!*\n\n"
+            "✅ *Ótimo!*\n\n"
             "Agora envie aqui o seu *UID* da corretora.\n\n"
             "📌 *Como encontrar seu UID:*\n"
             "Abra o app da corretora, clique na sua foto de perfil. "
@@ -192,14 +192,14 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         aguardando_comprovante.add(query.from_user.id)
         keyboard = [[InlineKeyboardButton("💳 Pagar agora (PIX ou cartao)", url=INFINITEPAY_LINK)]]
         await query.message.reply_text(
-            "💳 *Crypto Intel Zone - Acesso Premium - R$49,90/mes*\n\n"
-            "📌 *Passo a passo:*\n\n"
-            "1️⃣ Clique no botao abaixo e efetue o pagamento\n"
-            "2️⃣ Apos pagar, volte aqui e envie o comprovante (foto ou texto)\n"
-            "3️⃣ A gente valida e manda o link do canal pra voce aqui mesmo ✅\n\n"
-            "⚠️ Nao feche essa conversa apos pagar.\n"
-            "Volte aqui e envie o comprovante para liberar seu acesso.\n\n"
-            "🔄 Renovacao todo mes — cancele quando quiser",
+            "📋 *Enviar comprovante — acesso ao grupo premium*\n\n"
+            "Escolha sua situação:\n\n"
+            "🏦 *Criou conta na MEXC ou BingX pelo nosso link?*\n"
+            "Envie aqui o seu UID (numero do seu perfil na corretora).\n\n"
+            "💳 *Quer assinar por R$49,90/mes?*\n"
+            "Clique no botao abaixo para pagar, depois envie o comprovante aqui (foto ou texto).\n\n"
+            "⚠️ Não feche essa conversa. Volte aqui e envie o UID ou comprovante para liberar seu acesso.\n\n"
+            "A gente valida e manda o link do grupo pra voce! ✅",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
@@ -222,28 +222,28 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=target_id,
             text=(
-                "❌ *Nao conseguimos validar seu acesso.*\n\n"
+                "❌ *Não conseguimos validar seu acesso.*\n\n"
                 "Pode ter acontecido um desses casos:\n"
-                "• O UID nao foi criado pelo nosso link\n"
-                "• O comprovante nao foi identificado\n\n"
+                "• O UID não foi criado pelo nosso link\n"
+                "• O comprovante não foi identificado\n\n"
                 "Fale com o suporte e a gente resolve rapido: @suportewsg"
             ),
             parse_mode="Markdown"
         )
-        await query.message.reply_text("❌ Solicitacao recusada.")
+        await query.message.reply_text("❌ Solicitação recusada.")
  
     elif query.data == "sinais":
         keyboard = [[InlineKeyboardButton("⚡ Acessar sinais AE Crypto (10% OFF)", url="https://t.me/aecrypto_bot?start=MAVA")]]
         await query.message.reply_text(
             "⚡ *Sinais AE Crypto*\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "⚠️ *Atencao: este servico NAO e do Wall Street Girls.*\n"
+            "⚠️ *Atenção: este servico NAO e do Wall Street Girls.*\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "Os sinais sao enviados pelo grupo *AE Crypto*, nosso parceiro externo. "
-            "Sao operacoes prontas para copiar, sem explicacao de raciocinio.\n\n"
+            "Sao operações prontas para copiar, sem explicação de raciocínio.\n\n"
             "👉 Disponibilizamos aqui porque e um parceiro de confianca e "
             "nossa comunidade ganha *10% de desconto* no acesso.\n\n"
-            "Se voce quer entender o mercado e acompanhar operacoes explicadas por nos, "
+            "Se você quer entender o mercado e acompanhar operações explicadas por nos, "
             "acesse o *Crypto Intel Zone* — nosso grupo premium de analises e operacoes. 💎",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -254,7 +254,7 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "🎓 *Mentoria Wall Street Girls*\n\n"
             "Para quem quer acelerar resultados.\n\n"
-            "📈 Acompanhamento proximo\n"
+            "📈 Acompanhamento próximo\n"
             "🧠 Desenvolvimento de mentalidade\n"
             "🎯 Direcionamento estrategico\n\n"
             "👉 Fale com o suporte para saber mais:",
@@ -355,3 +355,4 @@ def main():
  
 if __name__ == "__main__":
     main()
+ 
