@@ -91,7 +91,7 @@ async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_ex
         InlineKeyboardButton("❌ Recusar", callback_data="recusar_" + str(user_id)),
     ]]
     texto = (
-        "📋 *Nova solicitação de acesso!*\n\n"
+        "📋 Nova solicitacao de acesso!\n\n"
         "👤 Nome: " + nome + "\n"
         "🔗 Username: " + username + "\n"
         "🆔 ID: " + str(user_id) + "\n"
@@ -104,7 +104,6 @@ async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_ex
     await context.bot.send_message(
         chat_id=ADMIN_ID,
         text=texto,
-        parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
  
