@@ -6,7 +6,7 @@ import datetime
  
 TOKEN        = os.getenv("TOKEN")
 VIP_GROUP_ID = -1002336704499
-ADMIN_ID     = 8671065515
+ADMIN_ID     = 5908958242
  
 INFINITEPAY_LINK = "https://link.infinitepay.io/uppr/VC1DLTEtSQ-1u1nnH5til-49,90"
  
