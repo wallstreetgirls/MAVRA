@@ -1,11 +1,12 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes
 import os
 import json
 import datetime
  
 TOKEN        = os.getenv("TOKEN")
 VIP_GROUP_ID = -1002336704499
+DISCUSSION_GROUP_ID = -1003274946409  # Grupo linkado para comentários
 ADMIN_ID     = 5908958242
  
 INFINITEPAY_LINK = "https://link.infinitepay.io/uppr/VC1DLTEtSQ-1u1nnH5til-49,90"
@@ -31,6 +32,35 @@ def salvar_db(db):
  
 aguardando_uid         = set()
 aguardando_comprovante = set()
+ 
+# -------------------------------------------------------
+# NOVO: adiciona a pessoa ao grupo de discussão automaticamente
+# -------------------------------------------------------
+async def adicionar_ao_grupo_discussao(context, user_id, nome):
+    try:
+        await context.bot.add_chat_member(
+            chat_id=DISCUSSION_GROUP_ID,
+            user_id=user_id
+        )
+        print(f"✅ {nome} adicionada ao grupo de discussão.")
+    except Exception as e:
+        print(f"⚠️ Não foi possível adicionar {nome} ao grupo: {e}")
+ 
+# -------------------------------------------------------
+# NOVO: detecta quando alguém entra no canal VIP
+# -------------------------------------------------------
+async def membro_entrou_no_canal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = update.chat_member
+    if result is None:
+        return
+ 
+    novo_status  = result.new_chat_member.status
+    antigo_status = result.old_chat_member.status
+    user = result.new_chat_member.user
+ 
+    # Só age quando a pessoa ENTRA no canal (vira membro)
+    if novo_status == "member" and antigo_status not in ("member", "administrator", "creator"):
+        await adicionar_ao_grupo_discussao(context, user.id, user.full_name)
  
 async def registrar_e_notificar(context, user_id, nome, username, via):
     link_obj = await context.bot.create_chat_invite_link(
@@ -348,7 +378,11 @@ def main():
     app.add_handler(CallbackQueryHandler(escolha))
     app.add_handler(MessageHandler(filters.PHOTO, receber_foto))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receber_texto))
-    app.run_polling()
+ 
+    # NOVO: escuta entradas no canal VIP
+    app.add_handler(ChatMemberHandler(membro_entrou_no_canal, ChatMemberHandler.CHAT_MEMBER))
+ 
+    app.run_polling(allowed_updates=Update.ALL_TYPES)  # IMPORTANTE: ALL_TYPES para detectar membros
  
 if __name__ == "__main__":
     main()
