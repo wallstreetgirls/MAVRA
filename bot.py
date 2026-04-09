@@ -75,7 +75,6 @@ async def registrar_e_notificar(context, user_id, nome, username, via):
             "📥 Via: " + via + "\n"
             "📅 " + datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
         ),
-        parse_mode="Markdown"
     )
  
 async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_extra=""):
@@ -317,7 +316,6 @@ async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ *Comprovante recebido!*\n\n"
             "Estamos verificando e vamos liberar seu acesso em breve. 🕐\n\n"
             "Qualquer duvida: @suportewsg",
-            parse_mode="Markdown"
         )
  
 async def receber_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -342,7 +340,6 @@ async def receber_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ *Comprovante recebido!*\n\n"
             "Estamos verificando e vamos liberar seu acesso em breve. 🕐\n\n"
             "Qualquer duvida: @suportewsg",
-            parse_mode="Markdown"
         )
  
 def main():
