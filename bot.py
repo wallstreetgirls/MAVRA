@@ -1,367 +1,354 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from flask import Flask, request as flask_request
-import threading
-import requests
 import os
-import time
+import json
+import datetime
  
-# ─── CONFIG ──────────────────────────────────────────────────────────────────
-TOKEN = os.getenv("TOKEN")
-INFINITE_TAG = os.getenv("INFINITE_TAG")       # sua InfiniteTag sem o $
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")     # 590895242
-BASE_URL = os.getenv("BASE_URL")               # https://mavra-production.up.railway.app
+TOKEN        = os.getenv("TOKEN")
+VIP_GROUP_ID = -1002336704499
+ADMIN_ID     = 5908958242
  
-VIP_LINK = "https://t.me/+KN3vIstR8B1kZjEx"
+INFINITEPAY_LINK = "https://link.infinitepay.io/uppr/VC1DLTEtSQ-1u1nnH5til-49,90"
  
-# LINKS
-MEXC_LINK = "https://promote.mexc.com/b/wallstreetgirls"
-BINGX_LINK = "https://bingx.com/partner/wallstreetgirls"
-SUPORTE_LINK = "https://t.me/suportewsg"
- 
-YOUTUBE_LINK = "https://youtube.com/@wallstreet_girls"
-TIKTOK_LINK = "https://tiktok.com/@wallstreet.girls"
+MEXC_LINK      = "https://promote.mexc.com/b/wallstreetgirls"
+BINGX_LINK     = "https://bingx.com/partner/wallstreetgirls"
+SUPORTE_LINK   = "https://t.me/suportewsg"
+YOUTUBE_LINK   = "https://youtube.com/@wallstreet_girls"
+TIKTOK_LINK    = "https://tiktok.com/@wallstreet.girls"
 INSTAGRAM_LINK = "https://instagram.com/wallstreet_girls"
  
-uids_validos = ["123456", "789101", "555999"]
-aguardando_uid = set()
+DB_FILE = "assinantes.json"
  
-# Sessões para fluxo de cobrança
-sessions = {}
+def carregar_db():
+    if not os.path.exists(DB_FILE):
+        return {}
+    with open(DB_FILE, "r") as f:
+        return json.load(f)
  
-# ─── HELPERS INFINITEPAY ─────────────────────────────────────────────────────
-def gerar_link_pagamento(descricao, valor_centavos, cliente_nome=None, recorrente=False, periodicidade="monthly"):
-    payload = {
-        "handle": INFINITE_TAG,
-        "redirect_url": f"{BASE_URL}/obrigado",
-        "webhook_url": f"{BASE_URL}/webhook/infinitepay",
-        "order_nsu": f"order_{int(time.time())}",
-        "items": [
-            {
-                "quantity": 1,
-                "price": valor_centavos,
-                "description": descricao
-            }
-        ]
-    }
+def salvar_db(db):
+    with open(DB_FILE, "w") as f:
+        json.dump(db, f, indent=2)
  
-    if cliente_nome:
-        payload["customer"] = {"name": cliente_nome}
+aguardando_uid         = set()
+aguardando_comprovante = set()
  
-    if recorrente:
-        payload["recurrence"] = {"frequency": periodicidade}
- 
-    resp = requests.post(
-        "https://api.infinitepay.io/invoices/public/checkout/links",
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=10
+async def registrar_e_notificar(context, user_id, nome, username, via):
+    link_obj = await context.bot.create_chat_invite_link(
+        chat_id=VIP_GROUP_ID,
+        member_limit=1,
+        expire_date=datetime.datetime.now() + datetime.timedelta(hours=48),
     )
-    resp.raise_for_status()
-    data = resp.json()
-    return data.get("url") or data.get("checkout_url") or data.get("link")
+    link = link_obj.invite_link
  
-def formatar_valor(centavos):
-    return f"R$ {centavos/100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    db = carregar_db()
+    db[str(user_id)] = {
+        "ativo": True,
+        "nome": nome,
+        "username": username,
+        "via": via,
+        "entrou_em": datetime.datetime.now().isoformat(),
+        "renovar_em": (datetime.datetime.now() + datetime.timedelta(days=30)).isoformat(),
+    }
+    salvar_db(db)
  
-# ─── START ────────────────────────────────────────────────────────────────────
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=(
+            "✅ *Acesso liberado!*\n\n"
+            "🔥 Bem-vinda ao *Crypto Intel Zone*!\n\n"
+            "👇 Clique no link abaixo para entrar:\n"
+            + link + "\n\n"
+            "⚠️ O link e de uso unico e expira em 48h.\n"
+            "Não compartilhe com ninguem!\n\n"
+            "Qualquer duvida: @suportewsg"
+        ),
+        parse_mode="Markdown"
+    )
+ 
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=(
+            "🟢 *Novo membro - Crypto Intel Zone!*\n\n"
+            "👤 Nome: " + nome + "\n"
+            "🔗 Username: " + username + "\n"
+            "🆔 ID: " + str(user_id) + "\n"
+            "📥 Via: " + via + "\n"
+            "📅 " + datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        ),
+    )
+ 
+async def enviar_para_suporte(context, user_id, nome, username, via, mensagem_extra=""):
+    db = carregar_db()
+    db[str(user_id)] = db.get(str(user_id), {})
+    db[str(user_id)]["nome"]     = nome
+    db[str(user_id)]["username"] = username
+    db[str(user_id)]["ativo"]    = False
+    salvar_db(db)
+ 
+    keyboard = [[
+        InlineKeyboardButton("✅ Liberar acesso", callback_data="liberar_" + str(user_id)),
+        InlineKeyboardButton("❌ Recusar", callback_data="recusar_" + str(user_id)),
+    ]]
+    texto = (
+        "📋 Nova solicitacao de acesso!\n\n"
+        "👤 Nome: " + nome + "\n"
+        "🔗 Username: " + username + "\n"
+        "🆔 ID: " + str(user_id) + "\n"
+        "📥 Via: " + via + "\n"
+    )
+    if mensagem_extra:
+        texto += "📝 Info: " + mensagem_extra + "\n"
+    texto += "\n👇 Verifique e libere o acesso:"
+ 
+    await context.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=texto,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+ 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("🔐 Intel Zone (VIP)", callback_data="vip")],
-        [InlineKeyboardButton("⚡ Sinais (parceria)", callback_data="sinais")],
-        [InlineKeyboardButton("🎓 Mentoria", callback_data="mentoria")],
+        [InlineKeyboardButton("💎 Crypto Intel Zone — Análises e Operações", callback_data="vip")],
         [InlineKeyboardButton("📊 Conteúdo gratuito", callback_data="conteudo")],
-        [InlineKeyboardButton("💳 Pagamento / Assinatura", callback_data="pagamento")],
-        [InlineKeyboardButton("💬 Suporte", url=SUPORTE_LINK)]
+        [InlineKeyboardButton("🎓 Mentoria", callback_data="mentoria")],
+        [InlineKeyboardButton("🤝 Parceiro Externo — AE Crypto", callback_data="sinais")],
+        [InlineKeyboardButton("✅ Enviar comprovante", callback_data="pagar_vip")],
+        [InlineKeyboardButton("💬 Suporte", url=SUPORTE_LINK)],
     ]
- 
-    reply_markup = InlineKeyboardMarkup(keyboard)
- 
     await update.message.reply_text(
         "💎 *Wall Street Girls*\n\n"
         "Um ecossistema para quem quer operar com estratégia e consistência.\n\n"
         "Aqui você não depende de sorte.\n"
         "Você aprende a ler o mercado.\n\n"
+        "─────────────────────\n"
+        "🟡 *Quer entrar no Crypto Intel Zone?*\n"
+        "Nosso grupo premium de análises e operações ao vivo.\n\n"
+        "1️⃣ Clique em *Crypto Intel Zone* e escolha sua forma de acesso\n"
+        "2️⃣ Crie sua conta na corretora parceira ou efetue o pagamento\n"
+        "3️⃣ Retorne ao bot e selecione *✅ Enviar comprovante*\n"
+        "4️⃣ A gente valida e manda o link do grupo pra você! ✅\n\n"
+        "─────────────────────\n"
         "👇 Escolha como quer começar:",
         parse_mode="Markdown",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
  
-# ─── CLIQUES ──────────────────────────────────────────────────────────────────
 async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    chat_id = query.from_user.id
  
-    # VIP
     if query.data == "vip":
-        aguardando_uid.add(chat_id)
- 
         keyboard = [
-            [InlineKeyboardButton("📲 Criar conta MEXC", url=MEXC_LINK)],
-            [InlineKeyboardButton("📲 Criar conta BingX", url=BINGX_LINK)]
+            [InlineKeyboardButton("1️⃣ Criar conta MEXC (gratuito)", url=MEXC_LINK)],
+            [InlineKeyboardButton("2️⃣ Criar conta BingX (gratuito)", url=BINGX_LINK)],
+            [InlineKeyboardButton("3️⃣ Assinar por R$49,90/mês 💳", callback_data="pagar_vip")],
+            [InlineKeyboardButton("✅ Enviar comprovante", callback_data="pagar_vip")],
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
- 
         await query.message.reply_text(
-            "🔐 *Intel Zone (VIP)*\n\n"
-            "O ambiente onde você aprende a operar de verdade.\n\n"
-            "📊 Análises ao vivo\n"
-            "🎯 Entradas e saídas explicadas\n"
-            "🎥 Operações em tempo real\n\n"
-            "*PASSO A PASSO PARA ENTRAR:*\n\n"
-            "1️⃣ Crie sua conta por uma das corretoras abaixo\n"
-            "2️⃣ Faça login, deposite $100 e copie seu UID\n"
-            "3️⃣ Envie o UID e comprovante de depósito aqui para validação\n\n"
-            "👉 Após isso, seu acesso será liberado.\n",
+            "💎 *Crypto Intel Zone — grupo premium de analises e operacoes*\n\n"
+            "Aqui você não recebe sinal de terceiro.\n"
+            "Você acompanha *a gente operando ao vivo.*\n\n"
+            "Cada entrada explicada. Cada saida justificada.\n"
+            "Você aprende enquanto lucra.\n\n"
+            "✅ *O que você encontra aqui:*\n"
+            "📊 Análises técnicas feitas por nos\n"
+            "🎯 Entradas e saídas com explicação completa\n"
+            "🎥 Operações ao vivo em tempo real\n"
+            "🧠 Raciocínio por tras de cada decisão\n"
+            "💬 Comunidade exclusiva de traders\n\n"
+            "Não é sinal pronto para copiar.\n"
+            "E voce entendendo o mercado de verdade.\n\n"
+            "─────────────────────\n"
+            "🟡 *3 formas de entrar:*\n\n"
+            "1️⃣ *MEXC - gratuito*\n"
+            "Crie sua conta pelo nosso link e deposite 100USDT. Apos criar, volte ao menu principal e clique em "
+            "*Enviar comprovante* para enviar seu UID e liberar o acesso.\n\n"
+            "2️⃣ *BingX - gratuito*\n"
+            "Mesma coisa pela BingX. Crie pelo nosso link e deposite 100USDT, volte ao menu principal e clique em "
+            "*Enviar comprovante* para enviar seu UID.\n\n"
+            "3️⃣ *Assinatura - R$49,90/mes*\n"
+            "Ja tem corretora ou prefere assinar direto? Clique abaixo, efetue o pagamento e "
+            "envie o comprovante pelo menu principal para liberar o acesso.\n\n"
+            "─────────────────────\n"
+            "👇 Escolha sua forma de acesso:",
             parse_mode="Markdown",
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
  
-    # SINAIS
+    elif query.data == "validar_uid":
+        aguardando_uid.add(query.from_user.id)
+        await query.message.reply_text(
+            "✅ *Ótimo!*\n\n"
+            "Agora envie aqui o seu *UID* da corretora.\n\n"
+            "📌 *Como encontrar seu UID:*\n"
+            "Abra o app da corretora, clique na sua foto de perfil. "
+            "O UID aparece abaixo do seu nome.\n\n"
+            "So enviar o numero aqui que a gente valida e libera seu acesso! 👇",
+            parse_mode="Markdown",
+        )
+ 
+    elif query.data == "pagar_vip":
+        aguardando_comprovante.add(query.from_user.id)
+        keyboard = [[InlineKeyboardButton("💳 Pagar agora (PIX ou cartao)", url=INFINITEPAY_LINK)]]
+        await query.message.reply_text(
+            "📋 *Enviar comprovante — acesso ao grupo premium*\n\n"
+            "Escolha sua situação:\n\n"
+            "🏦 *Criou conta na MEXC ou BingX pelo nosso link?*\n"
+            "Envie aqui o seu UID (numero do seu perfil na corretora).\n\n"
+            "💳 *Quer assinar por R$49,90/mes?*\n"
+            "Clique no botao abaixo para pagar, depois envie o comprovante aqui (foto ou texto).\n\n"
+            "⚠️ Não feche essa conversa. Volte aqui e envie o UID ou comprovante para liberar seu acesso.\n\n"
+            "A gente valida e manda o link do grupo pra voce! ✅",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+ 
+    elif query.data.startswith("liberar_"):
+        target_id = int(query.data.split("_")[1])
+        db = carregar_db()
+        dados    = db.get(str(target_id), {})
+        nome     = dados.get("nome", str(target_id))
+        username = dados.get("username", "-")
+        via      = dados.get("via", "-")
+        try:
+            await registrar_e_notificar(context, target_id, nome, username, via)
+            await query.message.reply_text("✅ Acesso liberado para " + nome + "!")
+        except Exception as e:
+            await query.message.reply_text("❌ Erro: " + str(e))
+ 
+    elif query.data.startswith("recusar_"):
+        target_id = int(query.data.split("_")[1])
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=(
+                "❌ *Não conseguimos validar seu acesso.*\n\n"
+                "Pode ter acontecido um desses casos:\n"
+                "• O UID não foi criado pelo nosso link\n"
+                "• O comprovante não foi identificado\n\n"
+                "Fale com o suporte e a gente resolve rapido: @suportewsg"
+            ),
+            parse_mode="Markdown"
+        )
+        await query.message.reply_text("❌ Solicitação recusada.")
+ 
     elif query.data == "sinais":
-        keyboard = [
-            [InlineKeyboardButton("⚡ Acessar sinais (10% OFF)", url="https://t.me/aecrypto_bot?start=MAVA")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
- 
+        keyboard = [[InlineKeyboardButton("⚡ Acessar sinais AE Crypto (10% OFF)", url="https://t.me/aecrypto_bot?start=MAVA")]]
         await query.message.reply_text(
-            "⚡ *Grupo de Sinais*\n\n"
-            "📈 Operações prontas para execução\n\n"
-            "⚠️ Importante:\n"
-            "Esses sinais são enviados por um *parceiro externo*.\n"
-            "Não são análises feitas por nós.\n\n"
-            "👉 Ideal para quem quer praticidade.\n",
+            "⚡ *Sinais AE Crypto*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "⚠️ *Atenção: este servico NAO e do Wall Street Girls.*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Os sinais sao enviados pelo grupo *AE Crypto*, nosso parceiro externo. "
+            "Sao operações prontas para copiar, sem explicação de raciocínio.\n\n"
+            "👉 Disponibilizamos aqui porque e um parceiro de confianca e "
+            "nossa comunidade ganha *10% de desconto* no acesso.\n\n"
+            "Se você quer entender o mercado e acompanhar operações explicadas por nos, "
+            "acesse o *Crypto Intel Zone* — nosso grupo premium de analises e operacoes. 💎",
             parse_mode="Markdown",
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
  
-    # MENTORIA
     elif query.data == "mentoria":
-        keyboard = [
-            [InlineKeyboardButton("🎓 Falar com suporte", url=SUPORTE_LINK)]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
- 
+        keyboard = [[InlineKeyboardButton("🎓 Falar com suporte", url=SUPORTE_LINK)]]
         await query.message.reply_text(
             "🎓 *Mentoria Wall Street Girls*\n\n"
             "Para quem quer acelerar resultados.\n\n"
             "📈 Acompanhamento próximo\n"
             "🧠 Desenvolvimento de mentalidade\n"
-            "🎯 Direcionamento estratégico\n\n"
-            "👉 Fale com o suporte:",
+            "🎯 Direcionamento estrategico\n\n"
+            "👉 Fale com o suporte para saber mais:",
             parse_mode="Markdown",
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
  
-    # CONTEÚDO
     elif query.data == "conteudo":
         keyboard = [
             [InlineKeyboardButton("▶️ YouTube", url=YOUTUBE_LINK)],
             [InlineKeyboardButton("🎵 TikTok", url=TIKTOK_LINK)],
-            [InlineKeyboardButton("📸 Instagram", url=INSTAGRAM_LINK)]
+            [InlineKeyboardButton("📸 Instagram", url=INSTAGRAM_LINK)],
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
- 
         await query.message.reply_text(
-            "📊 *Conteúdo gratuito*\n\n"
-            "Acompanhe nossa visão de mercado e estratégias:",
+            "📊 *Conteudo gratuito*\n\n"
+            "Acompanhe nossa visao de mercado e estrategias:",
             parse_mode="Markdown",
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
  
-    # PAGAMENTO
-    elif query.data == "pagamento":
-        keyboard = [
-            [InlineKeyboardButton("💳 Cobrança avulsa", callback_data="pag_avulso")],
-            [InlineKeyboardButton("🔄 Assinatura recorrente", callback_data="pag_recorrente")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user     = update.message.from_user
+    user_id  = user.id
+    nome     = user.full_name
+    username = "@" + user.username if user.username else "sem username"
+    texto    = update.message.text.strip()
  
-        await query.message.reply_text(
-            "💳 *Pagamentos*\n\n"
-            "Escolha o tipo de cobrança:",
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
- 
-    elif query.data == "pag_avulso":
-        sessions[chat_id] = {"tipo": "avulso", "etapa": "descricao"}
-        await query.message.reply_text(
-            "📝 Qual é o nome do produto ou serviço?",
-            reply_markup=InlineKeyboardMarkup([[]])
-        )
- 
-    elif query.data == "pag_recorrente":
-        sessions[chat_id] = {"tipo": "recorrente", "etapa": "descricao"}
-        await query.message.reply_text(
-            "🔄 Qual é o nome do plano ou assinatura?",
-            reply_markup=InlineKeyboardMarkup([[]])
-        )
- 
-    elif query.data in ["per_mensal", "per_semanal", "per_anual"]:
-        mapa = {"per_mensal": "monthly", "per_semanal": "weekly", "per_anual": "yearly"}
-        session = sessions.get(chat_id, {})
-        session["periodicidade"] = mapa[query.data]
-        session["etapa"] = "cliente"
-        sessions[chat_id] = session
-        await query.message.reply_text("👤 Nome do cliente (ou digite *pular*):", parse_mode="Markdown")
- 
-# ─── MENSAGENS DE TEXTO (UID + FLUXO DE COBRANÇA) ────────────────────────────
-async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    text = update.message.text.strip()
-    chat_id = update.message.chat_id
- 
-    # ── Fluxo de cobrança ────────────────────────────────────────────────────
-    session = sessions.get(user_id)
-    if session:
-        tipo = session["tipo"]
-        etapa = session["etapa"]
- 
-        if etapa == "descricao":
-            session["descricao"] = text
-            session["etapa"] = "valor"
-            sessions[user_id] = session
-            return await update.message.reply_text(
-                "💰 Qual é o valor em R$? (ex: `49.90`)",
-                parse_mode="Markdown"
-            )
- 
-        if etapa == "valor":
-            try:
-                valor = float(text.replace(",", "."))
-                if valor <= 0:
-                    raise ValueError()
-            except ValueError:
-                return await update.message.reply_text("⚠️ Valor inválido. Digite novamente (ex: `49.90`):", parse_mode="Markdown")
- 
-            session["valor_centavos"] = int(valor * 100)
-            sessions[user_id] = session
- 
-            if tipo == "recorrente":
-                session["etapa"] = "periodicidade"
-                keyboard = [
-                    [InlineKeyboardButton("📅 Mensal", callback_data="per_mensal")],
-                    [InlineKeyboardButton("📅 Semanal", callback_data="per_semanal")],
-                    [InlineKeyboardButton("📅 Anual", callback_data="per_anual")]
-                ]
-                return await update.message.reply_text(
-                    "📅 Qual a periodicidade?",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-            else:
-                session["etapa"] = "cliente"
-                sessions[user_id] = session
-                return await update.message.reply_text("👤 Nome do cliente (ou digite *pular*):", parse_mode="Markdown")
- 
-        if etapa == "cliente":
-            cliente_nome = None if text.lower() == "pular" else text
-            session["cliente_nome"] = cliente_nome
-            sessions.pop(user_id, None)
- 
-            await update.message.reply_text("⏳ Gerando link de pagamento...")
- 
-            try:
-                link = gerar_link_pagamento(
-                    descricao=session["descricao"],
-                    valor_centavos=session["valor_centavos"],
-                    cliente_nome=cliente_nome,
-                    recorrente=(tipo == "recorrente"),
-                    periodicidade=session.get("periodicidade", "monthly")
-                )
- 
-                nome_periodo = {"monthly": "Mensal", "weekly": "Semanal", "yearly": "Anual"}
-                recorrencia_txt = f"\n📅 *Frequência:* {nome_periodo.get(session.get('periodicidade','monthly'))}" if tipo == "recorrente" else ""
-                cliente_txt = f"\n👤 *Cliente:* {cliente_nome}" if cliente_nome else ""
- 
-                keyboard = [[InlineKeyboardButton("💳 Pagar agora", url=link)]]
-                await update.message.reply_text(
-                    f"✅ *Link gerado!*\n\n"
-                    f"📦 *Produto:* {session['descricao']}\n"
-                    f"💰 *Valor:* {formatar_valor(session['valor_centavos'])}"
-                    f"{recorrencia_txt}{cliente_txt}\n\n"
-                    f"🔗 Compartilhe o botão abaixo com seu cliente:",
-                    parse_mode="Markdown",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
-                )
-            except Exception as e:
-                print("Erro InfinitePay:", e)
-                await update.message.reply_text("❌ Erro ao gerar o link. Verifique sua InfiniteTag e tente novamente.")
-            return
- 
-    # ── Validação de UID (fluxo original) ────────────────────────────────────
     if user_id in aguardando_uid:
-        uid = text
+        aguardando_uid.discard(user_id)
+        db = carregar_db()
+        db[str(user_id)] = db.get(str(user_id), {})
+        db[str(user_id)]["nome"]     = nome
+        db[str(user_id)]["username"] = username
+        db[str(user_id)]["ativo"]    = False
+        db[str(user_id)]["via"]      = "Corretora (UID)"
+        salvar_db(db)
  
-        if uid in uids_validos:
-            aguardando_uid.remove(user_id)
- 
-            keyboard = [[InlineKeyboardButton("🔐 Entrar na Intel Zone", url=VIP_LINK)]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
- 
-            await update.message.reply_text(
-                "✅ *UID validado com sucesso!*\n\n"
-                "🔥 Seu acesso está liberado:\n",
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
-        else:
-            await update.message.reply_text(
-                "❌ UID não encontrado.\n\n"
-                "Certifique-se de ter criado conta pelo link correto."
-            )
- 
-# ─── WEBHOOK INFINITEPAY (Flask em thread separada) ──────────────────────────
-flask_app = Flask(__name__)
- 
-@flask_app.route("/webhook/infinitepay", methods=["POST"])
-def webhook_infinitepay():
-    data = flask_request.get_json(silent=True) or {}
-    print("Webhook recebido:", data)
- 
-    pago = data.get("paid") is True or data.get("status") in ["paid", "approved"]
-    if pago and ADMIN_CHAT_ID:
-        valor = data.get("paid_amount") or data.get("amount", 0)
-        metodo = data.get("capture_method", "—").upper()
-        pedido = data.get("order_nsu", "—")
-        comprovante = data.get("receipt_url", "")
- 
-        mensagem = (
-            f"💰 *Pagamento recebido!*\n\n"
-            f"💵 *Valor:* {formatar_valor(valor)}\n"
-            f"💳 *Método:* {metodo}\n"
-            f"🔖 *Pedido:* `{pedido}`"
+        await enviar_para_suporte(context, user_id, nome, username, "Corretora (UID)", "UID: " + texto)
+        await update.message.reply_text(
+            "✅ *UID recebido!*\n\n"
+            "Estamos verificando e vamos liberar seu acesso em breve. 🕐\n\n"
+            "Qualquer duvida: @suportewsg",
+            parse_mode="Markdown"
         )
-        if comprovante:
-            mensagem += f"\n🧾 [Comprovante]({comprovante})"
+        return
  
-        # Envia notificação via API do Telegram
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": ADMIN_CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
+    if user_id in aguardando_comprovante:
+        aguardando_comprovante.discard(user_id)
+        db = carregar_db()
+        db[str(user_id)] = db.get(str(user_id), {})
+        db[str(user_id)]["nome"]     = nome
+        db[str(user_id)]["username"] = username
+        db[str(user_id)]["ativo"]    = False
+        db[str(user_id)]["via"]      = "Infinitepay"
+        salvar_db(db)
+ 
+        await enviar_para_suporte(context, user_id, nome, username, "Infinitepay")
+        await update.message.forward(chat_id=ADMIN_ID)
+        await update.message.reply_text(
+            "✅ *Comprovante recebido!*\n\n"
+            "Estamos verificando e vamos liberar seu acesso em breve. 🕐\n\n"
+            "Qualquer duvida: @suportewsg",
         )
  
-    return "", 200
+async def receber_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user     = update.message.from_user
+    user_id  = user.id
+    nome     = user.full_name
+    username = "@" + user.username if user.username else "sem username"
  
-@flask_app.route("/")
-def home():
-    return "Bot Wall Street Girls online ✅"
+    if user_id in aguardando_comprovante:
+        aguardando_comprovante.discard(user_id)
+        db = carregar_db()
+        db[str(user_id)] = db.get(str(user_id), {})
+        db[str(user_id)]["nome"]     = nome
+        db[str(user_id)]["username"] = username
+        db[str(user_id)]["ativo"]    = False
+        db[str(user_id)]["via"]      = "Infinitepay"
+        salvar_db(db)
  
-@flask_app.route("/obrigado")
-def obrigado():
-    return "Pagamento realizado! Obrigado 🎉"
+        await enviar_para_suporte(context, user_id, nome, username, "Infinitepay")
+        await update.message.forward(chat_id=ADMIN_ID)
+        await update.message.reply_text(
+            "✅ *Comprovante recebido!*\n\n"
+            "Estamos verificando e vamos liberar seu acesso em breve. 🕐\n\n"
+            "Qualquer duvida: @suportewsg",
+        )
  
-def rodar_flask():
-    port = int(os.getenv("PORT", 3000))
-    flask_app.run(host="0.0.0.0", port=port)
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(escolha))
+    app.add_handler(MessageHandler(filters.PHOTO, receber_foto))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receber_texto))
+    app.run_polling()
  
-# ─── RUN ──────────────────────────────────────────────────────────────────────
-threading.Thread(target=rodar_flask, daemon=True).start()
- 
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(escolha))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
- 
-app.run_polling()
+if __name__ == "__main__":
+    main()
