@@ -23,7 +23,10 @@ YOUTUBE_LINK = "https://youtube.com/@wallstreet_girls"
 TIKTOK_LINK = "https://tiktok.com/@wallstreet.girls"
 INSTAGRAM_LINK = "https://instagram.com/wallstreet_girls"
  
-# Sessões para fluxo de cobrança e VIP
+uids_validos = ["123456", "789101", "555999"]
+aguardando_uid = set()
+ 
+# Sessões para fluxo de cobrança
 sessions = {}
  
 # ─── HELPERS INFINITEPAY ─────────────────────────────────────────────────────
@@ -92,7 +95,7 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
  
     # VIP
     if query.data == "vip":
-        sessions[chat_id] = {"tipo": "vip", "etapa": "uid"}
+        aguardando_uid.add(chat_id)
  
         keyboard = [
             [InlineKeyboardButton("📲 Criar conta MEXC", url=MEXC_LINK)],
@@ -107,12 +110,10 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎯 Entradas e saídas explicadas\n"
             "🎥 Operações em tempo real\n\n"
             "*PASSO A PASSO PARA ENTRAR:*\n\n"
-            "1️⃣ Crie sua conta pela MEXC ou BingX pelo link abaixo\n"
-            "2️⃣ Deposite *100 USDT* na corretora\n"
-            "3️⃣ Envie aqui o seu *UID* da corretora\n"
-            "4️⃣ Envie o *print do comprovante* do depósito\n\n"
-            "👉 Após a validação, seu acesso será liberado manualmente.\n\n"
-            "📩 *Comece agora: envie seu UID:*",
+            "1️⃣ Crie sua conta por uma das corretoras abaixo\n"
+            "2️⃣ Faça login, deposite $100 e copie seu UID\n"
+            "3️⃣ Envie o UID e comprovante de depósito aqui para validação\n\n"
+            "👉 Após isso, seu acesso será liberado.\n",
             parse_mode="Markdown",
             reply_markup=reply_markup
         )
@@ -206,75 +207,15 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sessions[chat_id] = session
         await query.message.reply_text("👤 Nome do cliente (ou digite *pular*):", parse_mode="Markdown")
  
-# ─── MENSAGENS DE TEXTO ───────────────────────────────────────────────────────
+# ─── MENSAGENS DE TEXTO (UID + FLUXO DE COBRANÇA) ────────────────────────────
 async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
+    text = update.message.text.strip()
     chat_id = update.message.chat_id
-    session = sessions.get(user_id)
- 
-    # ── Fluxo VIP: aguardando UID ────────────────────────────────────────────
-    if session and session.get("tipo") == "vip" and session.get("etapa") == "uid":
-        if not update.message.text:
-            return
-        uid = update.message.text.strip()
-        session["uid"] = uid
-        session["etapa"] = "comprovante"
-        sessions[user_id] = session
- 
-        await update.message.reply_text(
-            f"✅ UID recebido: `{uid}`\n\n"
-            "📸 Agora envie o *print do comprovante* do depósito de *100 USDT* na corretora.",
-            parse_mode="Markdown"
-        )
-        return
- 
-    # ── Fluxo VIP: aguardando print do comprovante ───────────────────────────
-    if session and session.get("tipo") == "vip" and session.get("etapa") == "comprovante":
-        if not update.message.photo:
-            await update.message.reply_text(
-                "⚠️ Por favor, envie uma *imagem* do comprovante de depósito.",
-                parse_mode="Markdown"
-            )
-            return
- 
-        uid = session.get("uid", "não informado")
-        username = update.message.from_user.username or "sem username"
-        nome = update.message.from_user.full_name or "sem nome"
-        photo = update.message.photo[-1].file_id
- 
-        sessions.pop(user_id, None)
- 
-        # Notifica o admin
-        if ADMIN_CHAT_ID:
-            caption = (
-                f"🔔 *Nova solicitação VIP!*\n\n"
-                f"👤 *Nome:* {nome}\n"
-                f"📱 *Username:* @{username}\n"
-                f"🆔 *ID Telegram:* `{user_id}`\n"
-                f"🔑 *UID corretora:* `{uid}`\n\n"
-                f"💰 Depósito: 100 USDT\n"
-                f"👉 Valide e libere o acesso manualmente."
-            )
-            await context.bot.send_photo(
-                chat_id=int(ADMIN_CHAT_ID),
-                photo=photo,
-                caption=caption,
-                parse_mode="Markdown"
-            )
- 
-        await update.message.reply_text(
-            "✅ *Solicitação enviada com sucesso!*\n\n"
-            "Nossa equipe vai validar seu depósito e liberar seu acesso em breve.\n\n"
-            "⏳ Aguarde o contato do suporte.",
-            parse_mode="Markdown"
-        )
-        return
  
     # ── Fluxo de cobrança ────────────────────────────────────────────────────
-    if session and session.get("tipo") in ["avulso", "recorrente"]:
-        if not update.message.text:
-            return
-        text = update.message.text.strip()
+    session = sessions.get(user_id)
+    if session:
         tipo = session["tipo"]
         etapa = session["etapa"]
  
@@ -349,6 +290,28 @@ async def processar_mensagem(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("❌ Erro ao gerar o link. Verifique sua InfiniteTag e tente novamente.")
             return
  
+    # ── Validação de UID (fluxo original) ────────────────────────────────────
+    if user_id in aguardando_uid:
+        uid = text
+ 
+        if uid in uids_validos:
+            aguardando_uid.remove(user_id)
+ 
+            keyboard = [[InlineKeyboardButton("🔐 Entrar na Intel Zone", url=VIP_LINK)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+ 
+            await update.message.reply_text(
+                "✅ *UID validado com sucesso!*\n\n"
+                "🔥 Seu acesso está liberado:\n",
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text(
+                "❌ UID não encontrado.\n\n"
+                "Certifique-se de ter criado conta pelo link correto."
+            )
+ 
 # ─── WEBHOOK INFINITEPAY (Flask em thread separada) ──────────────────────────
 flask_app = Flask(__name__)
  
@@ -373,6 +336,7 @@ def webhook_infinitepay():
         if comprovante:
             mensagem += f"\n🧾 [Comprovante]({comprovante})"
  
+        # Envia notificação via API do Telegram
         requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
             json={"chat_id": ADMIN_CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
@@ -399,6 +363,5 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(escolha))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem))
-app.add_handler(MessageHandler(filters.PHOTO, processar_mensagem))
  
 app.run_polling()
