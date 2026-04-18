@@ -226,54 +226,6 @@ async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
-async def boas_vindas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for membro in update.message.new_chat_members:
-        if membro.is_bot:
-            continue
-        nome     = membro.full_name
-        username = "@" + membro.username if membro.username else "sem username"
-        user_id  = membro.id
-        data     = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-
-        # Salva no banco de dados
-        db = carregar_db()
-        if str(user_id) not in db:
-            db[str(user_id)] = {
-                "nome": nome,
-                "username": username,
-                "entrou_em": data,
-                "grupo": "Crypto Zone",
-                "ativo": False
-            }
-            salvar_db(db)
-
-        # Mensagem de boas-vindas
-        await context.bot.send_message(
-            chat_id=update.message.chat_id,
-            text=(
-                "📊 Bem-vindo(a) ao *Crypto Zone*, " + nome + "!\n\n"
-                "Sou a *MAVRA*, assistente virtual da Wall Street Girls. 🤖\n\n"
-                "Aqui você vai aprender a operar com estratégia e consistência "
-                "— e transformar conhecimento em resultado.\n\n"
-                "📌 *Explore as abas:*\n"
-                "☕ Bom Dia Trader — mindset para operar bem\n"
-                "🎓 Mini Aulas — conteúdo educacional gratuito\n"
-                "💬 Chat Geral — troque experiências com outros traders\n"
-                "❓ Dúvidas — nenhuma pergunta é pequena aqui\n\n"
-                "─────────────────────\n"
-                "💎 *Quer ir além?*\n\n"
-                "📊 *Intel Zone — R$79,90/mês*\n"
-                "Análises e ideias de trade com explicação completa.\n\n"
-                "📈 *Intel Zone LT — R$129,90/mês*\n"
-                "Operações ao vivo em tempo real. Exclusivo para membros do Intel Zone.\n\n"
-                "👉 Fale com a equipe: @suportewsg\n"
-                "👉 Ou acesse o bot: @wallstreetgirlsbot\n\n"
-                "─────────────────────\n"
-                "Bons trades! 🚀"
-            ),
-            parse_mode="Markdown"
-        )
-
 async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user     = update.message.from_user
     user_id  = user.id
@@ -348,7 +300,6 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("membros", listar_membros))
     app.add_handler(CallbackQueryHandler(escolha))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, boas_vindas))
     app.add_handler(MessageHandler(filters.PHOTO, receber_foto))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receber_texto))
     app.run_polling()
