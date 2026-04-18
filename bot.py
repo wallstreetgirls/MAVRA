@@ -8,7 +8,7 @@ TOKEN        = os.getenv("TOKEN")
 VIP_GROUP_ID = -1002336704499
 ADMIN_ID     = 5908958242
 
-INFINITEPAY_LINK = "https://link.infinitepay.io/uppr/VC1DLTEtSQ-1u1nnH5til-49,90"
+INFINITEPAY_LINK = "https://link.infinitepay.io/uppr/VC1DLTEtSQ-lcpUeOVNl-79,90"
 
 SUPORTE_LINK   = "https://t.me/suportewsg"
 YOUTUBE_LINK   = "https://youtube.com/@wallstreet_girls"
@@ -52,7 +52,7 @@ async def registrar_e_notificar(context, user_id, nome, username, via):
         chat_id=user_id,
         text=(
             "✅ *Acesso liberado!*\n\n"
-            "🔥 Bem-vinda ao *Intel Zone*!\n\n"
+            "🔥 Bem-vindo(a) ao *Intel Zone*!\n\n"
             "👇 Clique no link abaixo para entrar:\n"
             + link + "\n\n"
             "⚠️ O link é de uso único e expira em 48h.\n"
@@ -251,16 +251,25 @@ async def boas_vindas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=update.message.chat_id,
             text=(
-                "👑 Bem-vinda ao *Crypto Zone*, " + nome + "!\n\n"
-                "Aqui você vai aprender a operar com estratégia e consistência.\n\n"
+                "📊 Bem-vindo(a) ao *Crypto Zone*, " + nome + "!\n\n"
+                "Sou a *MAVRA*, assistente virtual da Wall Street Girls. 🤖\n\n"
+                "Aqui você vai aprender a operar com estratégia e consistência "
+                "— e transformar conhecimento em resultado.\n\n"
                 "📌 *Explore as abas:*\n"
-                "☕ Bom Dia Trader — fé e mindset\n"
-                "🎓 Mini Aulas — conteúdo gratuito\n"
-                "💬 Chat Geral — troque ideias\n"
-                "❓ Dúvidas — sem julgamento\n\n"
-                "💎 Quer ir além? Conheça o *Intel Zone* — análises e ideias de trade por R$79,90/mês.\n"
-                "Fale com a equipe: @suportewsg\n\n"
-                "Seja bem-vinda! 🚀"
+                "☕ Bom Dia Trader — mindset para operar bem\n"
+                "🎓 Mini Aulas — conteúdo educacional gratuito\n"
+                "💬 Chat Geral — troque experiências com outros traders\n"
+                "❓ Dúvidas — nenhuma pergunta é pequena aqui\n\n"
+                "─────────────────────\n"
+                "💎 *Quer ir além?*\n\n"
+                "📊 *Intel Zone — R$79,90/mês*\n"
+                "Análises e ideias de trade com explicação completa.\n\n"
+                "📈 *Intel Zone LT — R$129,90/mês*\n"
+                "Operações ao vivo em tempo real. Exclusivo para membros do Intel Zone.\n\n"
+                "👉 Fale com a equipe: @suportewsg\n"
+                "👉 Ou acesse o bot: @wallstreetgirlsbot\n\n"
+                "─────────────────────\n"
+                "Bons trades! 🚀"
             ),
             parse_mode="Markdown"
         )
@@ -313,9 +322,31 @@ async def receber_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Qualquer dúvida: @suportewsg",
         )
 
+async def listar_membros(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != ADMIN_ID:
+        return
+    db = carregar_db()
+    if not db:
+        await update.message.reply_text("Nenhum membro registrado ainda.")
+        return
+    texto = "📋 *Membros registrados:*\n\n"
+    for i, (uid, dados) in enumerate(db.items(), 1):
+        nome     = dados.get("nome", "-")
+        username = dados.get("username", "-")
+        entrou   = dados.get("entrou_em", "-")
+        grupo    = dados.get("grupo", "-")
+        ativo    = "✅ Ativo" if dados.get("ativo") else "⏳ Pendente"
+        texto += f"{i}. *{nome}* ({username})\n🆔 {uid} | {ativo}\n📅 {entrou} | {grupo}\n\n"
+        if len(texto) > 3500:
+            await update.message.reply_text(texto, parse_mode="Markdown")
+            texto = ""
+    if texto:
+        await update.message.reply_text(texto, parse_mode="Markdown")
+
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("membros", listar_membros))
     app.add_handler(CallbackQueryHandler(escolha))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, boas_vindas))
     app.add_handler(MessageHandler(filters.PHOTO, receber_foto))
