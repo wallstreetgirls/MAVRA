@@ -36,7 +36,7 @@ LINK_BINGEX = "https://bingx.com/partner/wallstreetgirls"
 CALENDLY_LINK = "https://calendly.com/wallstreet_girls"
  
 # Equipe — substitua COLOCAR_USERNAME_SABRINA pelo @ da Sabrina quando tiver
-SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "COLOCAR_USERNAME_SABRINA")
+SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "@sabrinamussi")
 CARLO_USERNAME   = "carlodeluca"
 SUPORTE_USERNAME = "suportewsg"
  
@@ -93,7 +93,7 @@ def _notificar_lead(nome, username, user_id, email, atendente) -> str:
 def _menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔴 CZ // Live Trading — Operações ao Vivo", callback_data="produto_lt")],
-        [InlineKeyboardButton("📊 CZ Intel Premium — Análises & Ideias",   callback_data="produto_intel")],
+        [InlineKeyboardButton("📊 CZ // Intel Premium — Análises & Ideias",   callback_data="produto_intel")],
         [InlineKeyboardButton("💬 Suporte de Vendas",                      callback_data="suporte_vendas")],
         [InlineKeyboardButton("📱 Conteúdo Gratuito",                      callback_data="conteudo")],
         [InlineKeyboardButton("📅 1:1 com a Mava — Grátis",               callback_data="um_a_um")],
