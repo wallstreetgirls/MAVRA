@@ -1,3 +1,6 @@
+
+Copiar
+
 """
 Wall Street Girls — Bot Telegram
 Requer: python-telegram-bot>=20.0, flask
@@ -21,8 +24,9 @@ TOKEN          = os.getenv("TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "wsg2026")
 PORT           = int(os.getenv("PORT", 8080))
  
-VIP_GROUP_ID = -1002336704499
-ADMIN_ID     = 5908958242
+INTEL_GROUP_ID      = -1002336704499  # CZ Intel Premium
+LIVE_TRADING_GROUP_ID = -5120143530   # CZ Live Trading
+ADMIN_ID            = 5908958242
  
 # Produtos
 HOTMART_INTEL = "https://pay.hotmart.com/M105464502I"
@@ -35,7 +39,7 @@ LINK_BINGEX = "https://bingx.com/partner/wallstreetgirls"
 # Calendly
 CALENDLY_LINK = "https://calendly.com/wallstreet_girls"
  
-# Equipe — substitua COLOCAR_USERNAME_SABRINA pelo @ da Sabrina quando tiver
+# Equipe
 SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "COLOCAR_USERNAME_SABRINA")
 CARLO_USERNAME   = "carlodeluca"
 SUPORTE_USERNAME = "suportewsg"
@@ -66,7 +70,6 @@ def _username(user) -> str:
     return f"@{user.username}" if user.username else "sem username"
  
 def _get_sales_rotation(user_id: str) -> tuple:
-    """Rotação: alterna entre Sabrina e Carlo indefinidamente."""
     db = carregar_db()
     count = db.get(user_id, {}).get("sales_contact_count", 0) + 1
     db.setdefault(user_id, {})["sales_contact_count"] = count
@@ -100,6 +103,10 @@ def _menu_keyboard():
  
 # ── /start ─────────────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Só responde no privado
+    if update.effective_chat.type != "private":
+        return
+ 
     await update.message.reply_text(
         "✦ *Wall Street Girls*\n\n"
         "Um ecossistema para quem opera com estratégia e consistência.\n"
@@ -165,7 +172,7 @@ async def cb_produto_intel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard,
     )
  
-# ── 1:1 com a Mava (isca + corretoras) ────────────────────────────────────────
+# ── 1:1 com a Mava ────────────────────────────────────────────────────────────
 async def cb_um_a_um(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -370,8 +377,12 @@ async def cb_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=_menu_keyboard(),
     )
  
-# ── Receber texto (email para suporte de vendas) ───────────────────────────────
+# ── Receber texto (APENAS NO PRIVADO) ─────────────────────────────────────────
 async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Ignora qualquer mensagem que não seja conversa privada com o bot
+    if update.effective_chat.type != "private":
+        return
+ 
     user     = update.message.from_user
     user_id  = user.id
     nome     = user.full_name
@@ -433,25 +444,13 @@ async def listar_membros(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(texto, parse_mode="Markdown")
  
 # ══════════════════════════════════════════════════════════════════════════════
-# WEBHOOK HOTMART — pagamento automático
+# WEBHOOK HOTMART
 # ══════════════════════════════════════════════════════════════════════════════
-"""
-CONFIGURAÇÃO NO HOTMART:
-1. Hotmart → Ferramentas → Webhooks → Adicionar webhook
-2. URL: https://SEU-DOMINIO-RAILWAY.railway.app/hotmart-webhook
-3. Chave secreta: o valor de WEBHOOK_SECRET (ex: wsg2026)
-4. Eventos: PURCHASE_APPROVED e PURCHASE_CANCELED
- 
-O Hotmart envia um header 'X-Hotmart-Hottok' com a chave secreta.
-O bot valida esse header antes de processar.
-"""
- 
 flask_app = Flask(__name__)
-bot_app   = None  # preenchido no main()
+bot_app   = None
  
 @flask_app.route("/hotmart-webhook", methods=["POST"])
 def hotmart_webhook():
-    # Valida chave secreta
     token = flask_request.headers.get("X-Hotmart-Hottok", "")
     if token != WEBHOOK_SECRET:
         return {"error": "unauthorized"}, 401
@@ -459,19 +458,16 @@ def hotmart_webhook():
     data  = flask_request.json or {}
     event = data.get("event", "")
  
-    # Extrai dados do comprador
-    buyer    = data.get("data", {}).get("buyer", {})
-    nome     = buyer.get("name", "Desconhecido")
-    email    = buyer.get("email", "-")
-    # Hotmart não fornece user_id do Telegram — salvamos por email para lookup futuro
-    produto  = data.get("data", {}).get("product", {}).get("name", "-")
+    buyer   = data.get("data", {}).get("buyer", {})
+    nome    = buyer.get("name", "Desconhecido")
+    email   = buyer.get("email", "-")
+    produto = data.get("data", {}).get("product", {}).get("name", "-")
  
     if event == "PURCHASE_APPROVED":
         asyncio.run_coroutine_threadsafe(
             _hotmart_aprovado(nome, email, produto),
             bot_app.loop,
         )
- 
     elif event == "PURCHASE_CANCELED":
         asyncio.run_coroutine_threadsafe(
             _hotmart_cancelado(nome, email, produto),
@@ -481,52 +477,69 @@ def hotmart_webhook():
     return {"ok": True}, 200
  
 async def _hotmart_aprovado(nome: str, email: str, produto: str):
-    """Notifica admin sobre nova compra aprovada."""
     db = carregar_db()
  
-    # Procura user_id pelo email (se a pessoa já interagiu com o bot)
     telegram_id = None
     for uid, dados in db.items():
         if dados.get("email") == email:
             telegram_id = int(uid)
             break
  
-    # Atualiza DB
     chave = str(telegram_id) if telegram_id else f"email_{email}"
     db[chave] = db.get(chave, {})
     db[chave].update({
-        "ativo":     True,
-        "nome":      nome,
-        "email":     email,
-        "via":       f"Hotmart — {produto}",
-        "entrou_em": datetime.datetime.now().isoformat(),
+        "ativo":      True,
+        "nome":       nome,
+        "email":      email,
+        "via":        f"Hotmart — {produto}",
+        "entrou_em":  datetime.datetime.now().isoformat(),
         "renovar_em": (datetime.datetime.now() + datetime.timedelta(days=30)).isoformat(),
     })
     salvar_db(db)
  
-    # Se temos o Telegram ID, cria link e envia automaticamente
     if telegram_id:
         try:
-            link_obj = await bot_app.bot.create_chat_invite_link(
-                chat_id=VIP_GROUP_ID,
-                member_limit=1,
-                expire_date=datetime.datetime.now() + datetime.timedelta(hours=48),
-            )
+            # Determina quais grupos liberar baseado no produto
+            eh_live_trading = "live" in produto.lower() or "trading" in produto.lower()
+ 
+            # Grupos a liberar
+            grupos = [INTEL_GROUP_ID]
+            if eh_live_trading:
+                grupos.append(LIVE_TRADING_GROUP_ID)
+ 
+            links = []
+            for group_id in grupos:
+                link_obj = await bot_app.bot.create_chat_invite_link(
+                    chat_id=group_id,
+                    member_limit=1,
+                    expire_date=datetime.datetime.now() + datetime.timedelta(hours=48),
+                )
+                links.append(link_obj.invite_link)
+ 
+            # Monta mensagem com os links
+            if len(links) == 1:
+                corpo_links = f"👇 Clique no link abaixo para entrar no grupo:\n{links[0]}"
+            else:
+                corpo_links = (
+                    f"👇 Clique nos links abaixo para entrar nos grupos:\n\n"
+                    f"📊 *CZ Intel Premium:*\n{links[0]}\n\n"
+                    f"🔴 *CZ Live Trading:*\n{links[1]}"
+                )
+ 
             await bot_app.bot.send_message(
                 chat_id=telegram_id,
                 text=(
                     "🎉 *Pagamento confirmado! Acesso liberado.*\n\n"
                     f"Bem-vindo(a) ao *{produto}*!\n\n"
-                    "👇 Clique no link abaixo para entrar no grupo:\n"
-                    + link_obj.invite_link + "\n\n"
-                    "⚠️  Link de uso único — expira em 48h. Não compartilhe.\n\n"
+                    + corpo_links + "\n\n"
+                    "⚠️  Links de uso único — expiram em 48h. Não compartilhe.\n\n"
                     "Qualquer dúvida: @suportewsg"
                 ),
                 parse_mode="Markdown",
             )
             db[chave]["link_enviado"] = True
             salvar_db(db)
-            aviso_admin = f"✅ Link enviado automaticamente para {nome}."
+            aviso_admin = f"✅ Link(s) enviado(s) automaticamente para {nome}."
         except Exception as e:
             aviso_admin = f"⚠️ Não foi possível enviar link automático: {e}\nLibere manualmente."
     else:
@@ -550,7 +563,6 @@ async def _hotmart_aprovado(nome: str, email: str, produto: str):
     )
  
 async def _hotmart_cancelado(nome: str, email: str, produto: str):
-    """Notifica admin sobre cancelamento."""
     await bot_app.bot.send_message(
         chat_id=ADMIN_ID,
         text=(
@@ -586,9 +598,13 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(cb_solicitar_calendly_bingex, pattern="^solicitar_calendly_bingex$"))
     bot_app.add_handler(CallbackQueryHandler(cb_voltar,                    pattern="^voltar$"))
  
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receber_texto))
+    # CORREÇÃO PRINCIPAL: filters.ChatType.PRIVATE garante que o bot
+    # só responde a mensagens de texto no chat privado, nunca no grupo
+    bot_app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        receber_texto
+    ))
  
-    # Inicia Flask em thread separada para receber webhooks do Hotmart
     threading.Thread(
         target=lambda: flask_app.run(host="0.0.0.0", port=PORT),
         daemon=True,
