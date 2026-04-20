@@ -5,7 +5,8 @@ Requer: python-telegram-bot>=20.0, flask
 Variáveis de ambiente no Railway:
   TOKEN            → token do bot (@BotFather)
   WEBHOOK_SECRET   → string secreta que você cadastra no Hotmart (ex: wsg2026)
-  PORT             → Railway define automaticamente (não precisa setar)
+  SABRINA_USERNAME → username da Sabrina sem @
+  PORT             → Railway define automaticamente
 """
  
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -21,13 +22,9 @@ TOKEN          = os.getenv("TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "wsg2026")
 PORT           = int(os.getenv("PORT", 8080))
  
-INTEL_GROUP_ID      = -1002336704499  # CZ Intel Premium
-LIVE_TRADING_GROUP_ID = -5120143530   # CZ Live Trading
-ADMIN_ID            = 5908958242
- 
-# Produtos
-HOTMART_INTEL = "https://pay.hotmart.com/M105464502I"
-HOTMART_LT    = "https://pay.hotmart.com/M105464662R"
+INTEL_GROUP_ID        = -1002336704499
+LIVE_TRADING_GROUP_ID = -5120143530
+ADMIN_ID              = 5908958242
  
 # Corretoras
 LINK_MEXC   = "https://promote.mexc.com/a/z6V3qkQL"
@@ -37,7 +34,7 @@ LINK_BINGEX = "https://bingx.com/partner/wallstreetgirls"
 CALENDLY_LINK = "https://calendly.com/wallstreet_girls"
  
 # Equipe
-SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "COLOCAR_USERNAME_SABRINA")
+SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "sabrinamussi")
 CARLO_USERNAME   = "carlodeluca"
 SUPORTE_USERNAME = "suportewsg"
  
@@ -76,13 +73,14 @@ def _get_sales_rotation(user_id: str) -> tuple:
     else:
         return CARLO_USERNAME, "Carlo"
  
-def _notificar_lead(nome, username, user_id, email, atendente) -> str:
+def _notificar_lead(nome, username, user_id, email, atendente, produto) -> str:
     return (
         f"🔔 *Novo lead — Suporte de Vendas*\n\n"
         f"👤  {nome}\n"
         f"📎  {username}\n"
         f"🆔  `{user_id}`\n"
         f"✉️  {email}\n"
+        f"📦  Interesse: *{produto}*\n"
         f"➡️  Direcionado para *{atendente}*\n"
         f"🕐  {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
     )
@@ -100,7 +98,6 @@ def _menu_keyboard():
  
 # ── /start ─────────────────────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Só responde no privado
     if update.effective_chat.type != "private":
         return
  
@@ -120,7 +117,7 @@ async def cb_produto_lt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Acessar página de vendas", url=HOTMART_LT)],
+        [InlineKeyboardButton("🛒 Quero me inscrever", callback_data="comprar_lt")],
         [InlineKeyboardButton("← Voltar", callback_data="voltar")],
     ])
     await query.message.reply_text(
@@ -134,10 +131,12 @@ async def cb_produto_lt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅  Operações ao vivo no Telegram\n"
         "✅  Raciocínio explicado em cada movimento\n"
         "✅  Cripto, petróleo, gás natural e metais\n"
-        "✅  Acesso imediato após assinatura\n\n"
+        "✅  Acesso imediato após assinatura\n"
+        "✅  Inclui acesso ao CZ Intel Premium\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💰  *R$149,90 / mês*\n\n"
-        "👇 Clique abaixo para acessar a página de vendas:",
+        "Qualquer dúvida, fale com @suportewsg\n\n"
+        "👇 Clique abaixo para se inscrever:",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
@@ -147,7 +146,7 @@ async def cb_produto_intel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Acessar página de vendas", url=HOTMART_INTEL)],
+        [InlineKeyboardButton("🛒 Quero me inscrever", callback_data="comprar_intel")],
         [InlineKeyboardButton("← Voltar", callback_data="voltar")],
     ])
     await query.message.reply_text(
@@ -164,9 +163,61 @@ async def cb_produto_intel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅  Comunidade exclusiva de traders\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💰  *R$79,90 / mês*\n\n"
-        "👇 Clique abaixo para acessar a página de vendas:",
+        "Qualquer dúvida, fale com @suportewsg\n\n"
+        "👇 Clique abaixo para se inscrever:",
         parse_mode="Markdown",
         reply_markup=keyboard,
+    )
+ 
+# ── Comprar — redireciona pro suporte de vendas ────────────────────────────────
+async def cb_comprar_lt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["produto_interesse"] = "CZ Live Trading"
+    await _iniciar_suporte_vendas(query)
+ 
+async def cb_comprar_intel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["produto_interesse"] = "CZ Intel Premium"
+    await _iniciar_suporte_vendas(query)
+ 
+async def _iniciar_suporte_vendas(query):
+    user_id = query.from_user.id
+    db = carregar_db()
+    count = db.get(str(user_id), {}).get("sales_contact_count", 0)
+    destino_nome = "Sabrina" if count % 2 == 0 else "Carlo"
+    aguardando_email[user_id] = destino_nome
+ 
+    await query.message.reply_text(
+        f"💬 *Ótima escolha!*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Em instantes você será direcionado para *{destino_nome}* que vai te ajudar a finalizar sua inscrição.\n\n"
+        f"Para agilizar seu atendimento, informe seu *e-mail*:\n\n"
+        f"Qualquer dúvida, fale com @suportewsg\n\n"
+        f"_Digite seu e-mail abaixo 👇_",
+        parse_mode="Markdown",
+    )
+ 
+# ── Suporte de Vendas (menu principal) ────────────────────────────────────────
+async def cb_suporte_vendas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    db = carregar_db()
+    count = db.get(str(user_id), {}).get("sales_contact_count", 0)
+    destino_nome = "Sabrina" if count % 2 == 0 else "Carlo"
+    aguardando_email[user_id] = destino_nome
+    context.user_data["produto_interesse"] = "Geral"
+ 
+    await query.message.reply_text(
+        f"💬 *Suporte de Vendas*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"Em instantes você será direcionado para *{destino_nome}*.\n\n"
+        f"Para agilizar seu atendimento, informe seu *e-mail*:\n\n"
+        f"Qualquer dúvida, fale com @suportewsg\n\n"
+        f"_Digite seu e-mail abaixo 👇_",
+        parse_mode="Markdown",
     )
  
 # ── 1:1 com a Mava ────────────────────────────────────────────────────────────
@@ -192,6 +243,7 @@ async def cb_um_a_um(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Simples — abra sua conta em uma das nossas corretoras parceiras "
         "pelo nosso link e opere por *1 semana*.\n"
         "Depois é só solicitar e a sessão é sua. ✅\n\n"
+        "Qualquer dúvida, fale com @suportewsg\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "👇 Agende agora ou veja as corretoras:",
         parse_mode="Markdown",
@@ -210,7 +262,8 @@ async def cb_ver_corretoras(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏦 *Corretoras Parceiras*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "Escolha sua corretora, abra a conta pelo nosso link e\n"
-        "opere por *1 semana* para desbloquear a sessão gratuita:",
+        "opere por *1 semana* para desbloquear a sessão gratuita:\n\n"
+        "Qualquer dúvida, fale com @suportewsg",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
@@ -229,6 +282,7 @@ async def cb_corretora_mexc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "1️⃣  Crie sua conta gratuita pelo link abaixo\n"
         "2️⃣  Deposite e opere por pelo menos *1 semana*\n"
         "3️⃣  Clique em *Já operei* para solicitar sua sessão\n\n"
+        "Qualquer dúvida, fale com @suportewsg\n\n"
         "━━━━━━━━━━━━━━━━━━━━",
         parse_mode="Markdown",
         reply_markup=keyboard,
@@ -248,6 +302,7 @@ async def cb_corretora_bingex(update: Update, context: ContextTypes.DEFAULT_TYPE
         "1️⃣  Crie sua conta gratuita pelo link abaixo\n"
         "2️⃣  Deposite e opere por pelo menos *1 semana*\n"
         "3️⃣  Clique em *Já operei* para solicitar sua sessão\n\n"
+        "Qualquer dúvida, fale com @suportewsg\n\n"
         "━━━━━━━━━━━━━━━━━━━━",
         parse_mode="Markdown",
         reply_markup=keyboard,
@@ -284,7 +339,8 @@ async def _solicitar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE
         "✅ *Solicitação recebida!*\n\n"
         "Vou verificar sua conta na corretora e em até *24 horas* "
         "você receberá o link para agendar sua sessão.\n\n"
-        "Fique de olho nas mensagens do bot. 👀",
+        "Fique de olho nas mensagens do bot. 👀\n\n"
+        "Qualquer dúvida, fale com @suportewsg",
         parse_mode="Markdown",
     )
  
@@ -318,33 +374,13 @@ async def liberar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=(
             f"🎉 *Sua sessão foi liberada!*\n\n"
             f"Clique no link abaixo para agendar seus *20 minutos* comigo.\n\n"
-            f"📅  {CALENDLY_LINK}"
+            f"📅  {CALENDLY_LINK}\n\n"
+            f"Qualquer dúvida, fale com @suportewsg"
         ),
         parse_mode="Markdown",
     )
     await update.message.reply_text(
         f"✅ Calendly enviado para {info.get('nome')} ({info.get('username')})."
-    )
- 
-# ── Suporte de Vendas ──────────────────────────────────────────────────────────
-async def cb_suporte_vendas(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query   = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
- 
-    db    = carregar_db()
-    count = db.get(str(user_id), {}).get("sales_contact_count", 0)
-    destino_nome = "Sabrina" if count % 2 == 0 else "Carlo"
- 
-    aguardando_email[user_id] = destino_nome
- 
-    await query.message.reply_text(
-        f"💬 *Suporte de Vendas*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Em instantes você será direcionado para *{destino_nome}*.\n\n"
-        f"Para agilizar seu atendimento, informe seu *e-mail*:\n\n"
-        f"_Digite seu e-mail abaixo 👇_",
-        parse_mode="Markdown",
     )
  
 # ── Conteúdo gratuito ──────────────────────────────────────────────────────────
@@ -360,7 +396,8 @@ async def cb_conteudo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(
         "📱 *Conteúdo Gratuito*\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Acompanhe análises, estratégias e visão de mercado:",
+        "Acompanhe análises, estratégias e visão de mercado:\n\n"
+        "Qualquer dúvida, fale com @suportewsg",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
@@ -376,7 +413,6 @@ async def cb_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
  
 # ── Receber texto (APENAS NO PRIVADO) ─────────────────────────────────────────
 async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Ignora qualquer mensagem que não seja conversa privada com o bot
     if update.effective_chat.type != "private":
         return
  
@@ -386,14 +422,15 @@ async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = _username(user)
  
     if user_id in aguardando_email:
-        email   = update.message.text.strip()
+        email    = update.message.text.strip()
         aguardando_email.pop(user_id)
  
+        produto_interesse = context.user_data.get("produto_interesse", "Geral")
         atendente_user, atendente_nome = _get_sales_rotation(str(user_id))
  
         await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=_notificar_lead(nome, username, user_id, email, atendente_nome),
+            text=_notificar_lead(nome, username, user_id, email, atendente_nome, produto_interesse),
             parse_mode="Markdown",
         )
  
@@ -407,6 +444,7 @@ async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✅ *Tudo certo!*\n\n"
             f"*{atendente_nome}* está pronto(a) para te atender agora.\n\n"
+            f"Qualquer outra dúvida, fale com @suportewsg\n\n"
             f"━━━━━━━━━━━━━━━━━━━━",
             parse_mode="Markdown",
             reply_markup=keyboard,
@@ -496,10 +534,8 @@ async def _hotmart_aprovado(nome: str, email: str, produto: str):
  
     if telegram_id:
         try:
-            # Determina quais grupos liberar baseado no produto
             eh_live_trading = "live" in produto.lower() or "trading" in produto.lower()
  
-            # Grupos a liberar
             grupos = [INTEL_GROUP_ID]
             if eh_live_trading:
                 grupos.append(LIVE_TRADING_GROUP_ID)
@@ -513,7 +549,6 @@ async def _hotmart_aprovado(nome: str, email: str, produto: str):
                 )
                 links.append(link_obj.invite_link)
  
-            # Monta mensagem com os links
             if len(links) == 1:
                 corpo_links = f"👇 Clique no link abaixo para entrar no grupo:\n{links[0]}"
             else:
@@ -530,7 +565,7 @@ async def _hotmart_aprovado(nome: str, email: str, produto: str):
                     f"Bem-vindo(a) ao *{produto}*!\n\n"
                     + corpo_links + "\n\n"
                     "⚠️  Links de uso único — expiram em 48h. Não compartilhe.\n\n"
-                    "Qualquer dúvida: @suportewsg"
+                    "Qualquer dúvida, fale com @suportewsg"
                 ),
                 parse_mode="Markdown",
             )
@@ -585,6 +620,8 @@ def main():
  
     bot_app.add_handler(CallbackQueryHandler(cb_produto_lt,                pattern="^produto_lt$"))
     bot_app.add_handler(CallbackQueryHandler(cb_produto_intel,             pattern="^produto_intel$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_comprar_lt,                pattern="^comprar_lt$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_comprar_intel,             pattern="^comprar_intel$"))
     bot_app.add_handler(CallbackQueryHandler(cb_suporte_vendas,            pattern="^suporte_vendas$"))
     bot_app.add_handler(CallbackQueryHandler(cb_conteudo,                  pattern="^conteudo$"))
     bot_app.add_handler(CallbackQueryHandler(cb_um_a_um,                   pattern="^um_a_um$"))
@@ -595,8 +632,6 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(cb_solicitar_calendly_bingex, pattern="^solicitar_calendly_bingex$"))
     bot_app.add_handler(CallbackQueryHandler(cb_voltar,                    pattern="^voltar$"))
  
-    # CORREÇÃO PRINCIPAL: filters.ChatType.PRIVATE garante que o bot
-    # só responde a mensagens de texto no chat privado, nunca no grupo
     bot_app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         receber_texto
