@@ -36,7 +36,7 @@ LINK_BINGEX = "https://bingx.com/partner/wallstreetgirls"
 CALENDLY_LINK = "https://calendly.com/wallstreet_girls"
  
 # Equipe — substitua COLOCAR_USERNAME_SABRINA pelo @ da Sabrina quando tiver
-SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "@sabrinamussi")
+SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "COLOCAR_USERNAME_SABRINA")
 CARLO_USERNAME   = "carlodeluca"
 SUPORTE_USERNAME = "suportewsg"
  
@@ -66,17 +66,15 @@ def _username(user) -> str:
     return f"@{user.username}" if user.username else "sem username"
  
 def _get_sales_rotation(user_id: str) -> tuple:
-    """Rotação: 1ª Sabrina → 2ª Carlo → 3ª+ Suporte."""
+    """Rotação: alterna entre Sabrina e Carlo indefinidamente."""
     db = carregar_db()
     count = db.get(user_id, {}).get("sales_contact_count", 0) + 1
     db.setdefault(user_id, {})["sales_contact_count"] = count
     salvar_db(db)
-    if count == 1:
+    if count % 2 == 1:
         return SABRINA_USERNAME, "Sabrina"
-    elif count == 2:
-        return CARLO_USERNAME, "Carlo"
     else:
-        return SUPORTE_USERNAME, "Suporte"
+        return CARLO_USERNAME, "Carlo"
  
 def _notificar_lead(nome, username, user_id, email, atendente) -> str:
     return (
@@ -93,7 +91,7 @@ def _notificar_lead(nome, username, user_id, email, atendente) -> str:
 def _menu_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🔴 CZ // Live Trading — Operações ao Vivo", callback_data="produto_lt")],
-        [InlineKeyboardButton("📊 CZ // Intel Premium — Análises & Ideias",   callback_data="produto_intel")],
+        [InlineKeyboardButton("📊 CZ Intel Premium — Análises & Ideias",   callback_data="produto_intel")],
         [InlineKeyboardButton("💬 Suporte de Vendas",                      callback_data="suporte_vendas")],
         [InlineKeyboardButton("📱 Conteúdo Gratuito",                      callback_data="conteudo")],
         [InlineKeyboardButton("📅 1:1 com a Mava — Grátis",               callback_data="um_a_um")],
@@ -332,7 +330,7 @@ async def cb_suporte_vendas(update: Update, context: ContextTypes.DEFAULT_TYPE):
  
     db    = carregar_db()
     count = db.get(str(user_id), {}).get("sales_contact_count", 0)
-    destino_nome = "Sabrina" if count == 0 else "Carlo" if count == 1 else "Suporte"
+    destino_nome = "Sabrina" if count % 2 == 0 else "Carlo"
  
     aguardando_email[user_id] = destino_nome
  
