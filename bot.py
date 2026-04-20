@@ -1,6 +1,3 @@
-
-Copiar
-
 """
 Wall Street Girls — Bot Telegram
 Requer: python-telegram-bot>=20.0, flask
