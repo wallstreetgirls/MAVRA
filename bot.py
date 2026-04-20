@@ -1,12 +1,26 @@
+"""
+Wall Street Girls — Bot Telegram
+Requer: python-telegram-bot>=20.0, flask
+ 
+Variáveis de ambiente no Railway:
+  TOKEN            → token do bot (@BotFather)
+  WEBHOOK_SECRET   → string secreta que você cadastra no Hotmart (ex: wsg2026)
+  PORT             → Railway define automaticamente (não precisa setar)
+"""
+ 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, CallbackQueryHandler,
     MessageHandler, filters, ContextTypes,
 )
-import os, json, datetime
+from flask import Flask, request as flask_request
+import os, json, datetime, threading, asyncio
  
 # ── Configuração ───────────────────────────────────────────────────────────────
-TOKEN        = os.getenv("TOKEN")
+TOKEN          = os.getenv("TOKEN")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "wsg2026")
+PORT           = int(os.getenv("PORT", 8080))
+ 
 VIP_GROUP_ID = -1002336704499
 ADMIN_ID     = 5908958242
  
@@ -21,7 +35,7 @@ LINK_BINGEX = "https://bingx.com/partner/wallstreetgirls"
 # Calendly
 CALENDLY_LINK = "https://calendly.com/wallstreet_girls"
  
-# Equipe — quando tiver o @ da Sabrina, substitua COLOCAR_USERNAME_SABRINA
+# Equipe — substitua COLOCAR_USERNAME_SABRINA pelo @ da Sabrina quando tiver
 SABRINA_USERNAME = os.getenv("SABRINA_USERNAME", "COLOCAR_USERNAME_SABRINA")
 CARLO_USERNAME   = "carlodeluca"
 SUPORTE_USERNAME = "suportewsg"
@@ -45,8 +59,6 @@ def salvar_db(db: dict):
     with open(DB_FILE, "w") as f:
         json.dump(db, f, indent=2)
  
-# Estados em memória
-aguardando_comprovante = set()
 aguardando_email: dict = {}
  
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -68,26 +80,24 @@ def _get_sales_rotation(user_id: str) -> tuple:
  
 def _notificar_lead(nome, username, user_id, email, atendente) -> str:
     return (
-        f"✦ *Novo lead — Suporte de Vendas*\n\n"
+        f"🔔 *Novo lead — Suporte de Vendas*\n\n"
         f"👤  {nome}\n"
         f"📎  {username}\n"
         f"🆔  `{user_id}`\n"
         f"✉️  {email}\n"
-        f"→  Direcionado para *{atendente}*\n"
+        f"➡️  Direcionado para *{atendente}*\n"
         f"🕐  {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
     )
  
 # ── Menu principal ─────────────────────────────────────────────────────────────
 def _menu_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("◆ Intel Zone — Análises & Ideias de Trade", callback_data="vip")],
-        [InlineKeyboardButton("◆ Grupos Premium",                          callback_data="grupos")],
-        [InlineKeyboardButton("◆ Corretoras Parceiras",                    callback_data="corretoras")],
-        [InlineKeyboardButton("◇ Conteúdo Gratuito",                      callback_data="conteudo")],
-        [InlineKeyboardButton("◇ Mentoria",                                callback_data="mentoria")],
-        [InlineKeyboardButton("✦ Enviar Comprovante",                      callback_data="pagar_vip")],
-        [InlineKeyboardButton("○ Suporte de Vendas",                       callback_data="suporte_vendas")],
-        [InlineKeyboardButton("○ Suporte ao Cliente",                      url=SUPORTE_LINK)],
+        [InlineKeyboardButton("🔴 CZ // Live Trading — Operações ao Vivo", callback_data="produto_lt")],
+        [InlineKeyboardButton("📊 CZ Intel Premium — Análises & Ideias",   callback_data="produto_intel")],
+        [InlineKeyboardButton("💬 Suporte de Vendas",                      callback_data="suporte_vendas")],
+        [InlineKeyboardButton("📱 Conteúdo Gratuito",                      callback_data="conteudo")],
+        [InlineKeyboardButton("📅 1:1 com a Mava — Grátis",               callback_data="um_a_um")],
+        [InlineKeyboardButton("🛟 SAC — Atendimento ao Cliente",           url=SUPORTE_LINK)],
     ])
  
 # ── /start ─────────────────────────────────────────────────────────────────────
@@ -96,83 +106,109 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✦ *Wall Street Girls*\n\n"
         "Um ecossistema para quem opera com estratégia e consistência.\n"
         "Aqui você não depende de sorte — você aprende a ler o mercado.\n\n"
-        "─────────────────────\n"
-        "Escolha como quer começar:",
+        "Qualquer dúvida, fale com @suportewsg.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 Escolha como quer começar:",
         parse_mode="Markdown",
         reply_markup=_menu_keyboard(),
     )
  
-# ── Intel Zone (VIP legado) ────────────────────────────────────────────────────
-async def cb_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ── CZ Live Trading ────────────────────────────────────────────────────────────
+async def cb_produto_lt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✦ Assinar por R$79,90/mês", callback_data="pagar_vip")],
+        [InlineKeyboardButton("🛒 Acessar página de vendas", url=HOTMART_LT)],
         [InlineKeyboardButton("← Voltar", callback_data="voltar")],
     ])
     await query.message.reply_text(
-        "◆ *Intel Zone — Análises & Ideias de Trade*\n\n"
+        "🔴 *CZ // Live Trading — Operações ao Vivo*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Você acompanha *cada operação acontecendo em tempo real.*\n\n"
+        "Não é sinal. Não é resumo.\n"
+        "É o trader operando ao vivo — entrada, saída, raciocínio.\n"
+        "Você aprende vendo, não lendo.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "✅  Operações ao vivo no Telegram\n"
+        "✅  Raciocínio explicado em cada movimento\n"
+        "✅  Cripto, petróleo, gás natural e metais\n"
+        "✅  Acesso imediato após assinatura\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💰  *R$149,90 / mês*\n\n"
+        "👇 Clique abaixo para acessar a página de vendas:",
+        parse_mode="Markdown",
+        reply_markup=keyboard,
+    )
+ 
+# ── CZ Intel Premium ───────────────────────────────────────────────────────────
+async def cb_produto_intel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛒 Acessar página de vendas", url=HOTMART_INTEL)],
+        [InlineKeyboardButton("← Voltar", callback_data="voltar")],
+    ])
+    await query.message.reply_text(
+        "📊 *CZ Intel Premium — Análises & Ideias de Trade*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
         "Você não recebe sinal de terceiro.\n"
-        "Você acompanha *a análise acontecendo ao vivo.*\n\n"
-        "Cada ideia justificada. Cada decisão explicada.\n"
-        "Você evolui enquanto opera.\n\n"
-        "─────────────────────\n"
-        "✦ *O que está incluído:*\n\n"
-        "  ◦ Análises técnicas diárias — cripto, petróleo, gás e metais\n"
-        "  ◦ Ideias de trade com raciocínio completo\n"
-        "  ◦ Comunidade exclusiva de traders\n\n"
-        "─────────────────────\n"
-        "  *R$79,90 / mês*\n\n"
-        "🎁 *Bônus:* 7 dias grátis de acesso ao *Intel Zone LT* — operações ao vivo em tempo real.\n\n"
-        "─────────────────────",
+        "Você acompanha *a análise sendo construída*, com cada decisão justificada.\n\n"
+        "Ideal para quem quer desenvolver leitura gráfica real\n"
+        "e operar com mais clareza e consistência.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "✅  Análises técnicas diárias\n"
+        "✅  Ideias de trade com raciocínio completo\n"
+        "✅  Cripto, petróleo, gás natural e metais\n"
+        "✅  Comunidade exclusiva de traders\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💰  *R$79,90 / mês*\n\n"
+        "👇 Clique abaixo para acessar a página de vendas:",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
  
-# ── Grupos Premium ─────────────────────────────────────────────────────────────
-async def cb_grupos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ── 1:1 com a Mava (isca + corretoras) ────────────────────────────────────────
+async def cb_um_a_um(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✦ Assinar Intel Premium — R$79,90", url=HOTMART_INTEL)],
-        [InlineKeyboardButton("✦ Assinar Live Trading — R$149,90", url=HOTMART_LT)],
+        [InlineKeyboardButton("📅 Agendar minha sessão grátis", url=CALENDLY_LINK)],
+        [InlineKeyboardButton("🏦 Ver corretoras parceiras", callback_data="ver_corretoras")],
         [InlineKeyboardButton("← Voltar", callback_data="voltar")],
     ])
     await query.message.reply_text(
-        "◆ *Grupos Premium*\n\n"
-        "─────────────────────\n"
-        "◆ *Crypto Zone Intel Premium*  —  R$79,90/mês\n\n"
-        "Análises técnicas diárias de cripto, petróleo, gás natural e metais. "
-        "Conteúdo preciso, sem ruído. Ideal para quem quer desenvolver leitura "
-        "gráfica profissional e tomar decisões com mais clareza.\n\n"
-        "─────────────────────\n"
-        "◆ *Crypto Zone Live Trading*  —  R$149,90/mês\n\n"
-        "Operações ao vivo — cada entrada e saída acompanhada em tempo real, "
-        "com o raciocínio explicado em cada movimento. "
-        "Para quem quer absorver a mentalidade de um trader profissional na prática.\n\n"
-        "─────────────────────",
+        "📅 *1:1 com a Mava — Grátis*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Quer dar o primeiro passo no mercado financeiro com o pé direito?\n\n"
+        "Em *20 minutos* eu te mostro:\n\n"
+        "  📊  Como analisar um gráfico na prática\n"
+        "  🏦  Qual corretora faz mais sentido pro seu perfil\n"
+        "  🎯  Por onde começar sem queimar dinheiro\n\n"
+        "*Gratuito. Sem compromisso.*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🏦 *Como ganhar essa sessão?*\n\n"
+        "Simples — abra sua conta em uma das nossas corretoras parceiras "
+        "pelo nosso link e opere por *1 semana*.\n"
+        "Depois é só solicitar e a sessão é sua. ✅\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "👇 Agende agora ou veja as corretoras:",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
  
-# ── Corretoras Parceiras ───────────────────────────────────────────────────────
-async def cb_corretoras(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cb_ver_corretoras(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("◆ MEXC",   callback_data="corretora_mexc")],
-        [InlineKeyboardButton("◆ BingX",  callback_data="corretora_bingex")],
-        [InlineKeyboardButton("← Voltar", callback_data="voltar")],
+        [InlineKeyboardButton("🟡 Abrir conta na MEXC",  callback_data="corretora_mexc")],
+        [InlineKeyboardButton("🔵 Abrir conta na BingX", callback_data="corretora_bingex")],
+        [InlineKeyboardButton("← Voltar", callback_data="um_a_um")],
     ])
     await query.message.reply_text(
-        "◆ *Corretoras Parceiras*\n\n"
-        "Opere nas nossas corretoras parceiras e desbloqueie um benefício exclusivo.\n\n"
-        "─────────────────────\n"
-        "🎁 *Bônus exclusivo*\n\n"
-        "Após criar sua conta pelo nosso link e operar por pelo menos *1 semana*, "
-        "você ganha *20 minutos gratuitos* comigo para analisarmos um gráfico juntos — ao vivo.\n\n"
-        "─────────────────────\n"
-        "Escolha sua corretora:",
+        "🏦 *Corretoras Parceiras*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Escolha sua corretora, abra a conta pelo nosso link e\n"
+        "opere por *1 semana* para desbloquear a sessão gratuita:",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
@@ -181,16 +217,17 @@ async def cb_corretora_mexc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✦ Abrir conta na MEXC", url=LINK_MEXC)],
-        [InlineKeyboardButton("🎁 Já operei 1 semana — quero minha sessão", callback_data="solicitar_calendly_mexc")],
-        [InlineKeyboardButton("← Voltar", callback_data="corretoras")],
+        [InlineKeyboardButton("🟡 Criar conta na MEXC", url=LINK_MEXC)],
+        [InlineKeyboardButton("🎁 Já operei 1 semana — quero minha sessão!", callback_data="solicitar_calendly_mexc")],
+        [InlineKeyboardButton("← Voltar", callback_data="ver_corretoras")],
     ])
     await query.message.reply_text(
-        "◆ *MEXC — Corretora Parceira*\n\n"
-        "1 — Abra sua conta gratuita pelo link abaixo\n"
-        "2 — Deposite e opere por pelo menos *1 semana*\n"
-        "3 — Solicite sua sessão gratuita de *20 minutos*\n\n"
-        "─────────────────────",
+        "🟡 *MEXC — Corretora Parceira*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "1️⃣  Crie sua conta gratuita pelo link abaixo\n"
+        "2️⃣  Deposite e opere por pelo menos *1 semana*\n"
+        "3️⃣  Clique em *Já operei* para solicitar sua sessão\n\n"
+        "━━━━━━━━━━━━━━━━━━━━",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
@@ -199,23 +236,24 @@ async def cb_corretora_bingex(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✦ Abrir conta na BingX", url=LINK_BINGEX)],
-        [InlineKeyboardButton("🎁 Já operei 1 semana — quero minha sessão", callback_data="solicitar_calendly_bingex")],
-        [InlineKeyboardButton("← Voltar", callback_data="corretoras")],
+        [InlineKeyboardButton("🔵 Criar conta na BingX", url=LINK_BINGEX)],
+        [InlineKeyboardButton("🎁 Já operei 1 semana — quero minha sessão!", callback_data="solicitar_calendly_bingex")],
+        [InlineKeyboardButton("← Voltar", callback_data="ver_corretoras")],
     ])
     await query.message.reply_text(
-        "◆ *BingX — Corretora Parceira*\n\n"
-        "1 — Abra sua conta gratuita pelo link abaixo\n"
-        "2 — Deposite e opere por pelo menos *1 semana*\n"
-        "3 — Solicite sua sessão gratuita de *20 minutos*\n\n"
-        "─────────────────────",
+        "🔵 *BingX — Corretora Parceira*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "1️⃣  Crie sua conta gratuita pelo link abaixo\n"
+        "2️⃣  Deposite e opere por pelo menos *1 semana*\n"
+        "3️⃣  Clique em *Já operei* para solicitar sua sessão\n\n"
+        "━━━━━━━━━━━━━━━━━━━━",
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
  
 # ── Solicitação Calendly ───────────────────────────────────────────────────────
 async def _solicitar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE, corretora: str):
-    query = update.callback_query
+    query    = update.callback_query
     await query.answer()
     user     = query.from_user
     user_id  = str(user.id)
@@ -232,7 +270,7 @@ async def _solicitar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE
     await context.bot.send_message(
         chat_id=ADMIN_ID,
         text=(
-            f"✦ *Solicitação de sessão — {corretora}*\n\n"
+            f"🔔 *Solicitação de sessão — {corretora}*\n\n"
             f"👤  {user.full_name}\n"
             f"📎  {username}\n"
             f"🆔  `{user_id}`\n\n"
@@ -241,10 +279,10 @@ async def _solicitar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode="Markdown",
     )
     await query.message.reply_text(
-        "✦ *Solicitação recebida.*\n\n"
+        "✅ *Solicitação recebida!*\n\n"
         "Vou verificar sua conta na corretora e em até *24 horas* "
-        "você receberá o link para agendar sua sessão gratuita.\n\n"
-        "Fique de olho nas mensagens do bot.",
+        "você receberá o link para agendar sua sessão.\n\n"
+        "Fique de olho nas mensagens do bot. 👀",
         parse_mode="Markdown",
     )
  
@@ -254,7 +292,7 @@ async def cb_solicitar_calendly_mexc(update: Update, context: ContextTypes.DEFAU
 async def cb_solicitar_calendly_bingex(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _solicitar_calendly(update, context, "BingX")
  
-# ── /liberar (admin) ───────────────────────────────────────────────────────────
+# ── /liberar Calendly (admin) ──────────────────────────────────────────────────
 async def liberar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
@@ -276,10 +314,9 @@ async def liberar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=int(target_id),
         text=(
-            f"✦ *Sua sessão gratuita foi liberada.*\n\n"
-            f"Clique no link abaixo para agendar seus *20 minutos* comigo.\n"
-            f"Vamos analisar um gráfico juntos, ao vivo.\n\n"
-            f"→ {CALENDLY_LINK}"
+            f"🎉 *Sua sessão foi liberada!*\n\n"
+            f"Clique no link abaixo para agendar seus *20 minutos* comigo.\n\n"
+            f"📅  {CALENDLY_LINK}"
         ),
         parse_mode="Markdown",
     )
@@ -287,30 +324,24 @@ async def liberar_calendly(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Calendly enviado para {info.get('nome')} ({info.get('username')})."
     )
  
-# ── Suporte de Vendas — captura email primeiro ─────────────────────────────────
+# ── Suporte de Vendas ──────────────────────────────────────────────────────────
 async def cb_suporte_vendas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query   = update.callback_query
     await query.answer()
     user_id = query.from_user.id
  
-    # Mostra destino sem incrementar ainda
     db    = carregar_db()
     count = db.get(str(user_id), {}).get("sales_contact_count", 0)
-    if count == 0:
-        destino_nome = "Sabrina"
-    elif count == 1:
-        destino_nome = "Carlo"
-    else:
-        destino_nome = "Suporte"
+    destino_nome = "Sabrina" if count == 0 else "Carlo" if count == 1 else "Suporte"
  
     aguardando_email[user_id] = destino_nome
  
     await query.message.reply_text(
-        f"◆ *Suporte de Vendas*\n\n"
+        f"💬 *Suporte de Vendas*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"Em instantes você será direcionado para *{destino_nome}*.\n\n"
-        "Antes de continuar, informe seu *e-mail* para que possamos "
-        "acompanhar melhor o seu atendimento:\n\n"
-        "_Digite seu e-mail abaixo:_",
+        f"Para agilizar seu atendimento, informe seu *e-mail*:\n\n"
+        f"_Digite seu e-mail abaixo 👇_",
         parse_mode="Markdown",
     )
  
@@ -319,127 +350,17 @@ async def cb_conteudo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("▶ YouTube",   url=YOUTUBE_LINK)],
-        [InlineKeyboardButton("◈ TikTok",    url=TIKTOK_LINK)],
-        [InlineKeyboardButton("◉ Instagram", url=INSTAGRAM_LINK)],
-        [InlineKeyboardButton("← Voltar",    callback_data="voltar")],
+        [InlineKeyboardButton("▶️ YouTube",   url=YOUTUBE_LINK)],
+        [InlineKeyboardButton("🎵 TikTok",    url=TIKTOK_LINK)],
+        [InlineKeyboardButton("📸 Instagram", url=INSTAGRAM_LINK)],
+        [InlineKeyboardButton("← Voltar",     callback_data="voltar")],
     ])
     await query.message.reply_text(
-        "◇ *Conteúdo Gratuito*\n\n"
-        "Acompanhe nossa visão de mercado, análises e estratégias:",
+        "📱 *Conteúdo Gratuito*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Acompanhe análises, estratégias e visão de mercado:",
         parse_mode="Markdown",
         reply_markup=keyboard,
-    )
- 
-# ── Mentoria ───────────────────────────────────────────────────────────────────
-async def cb_mentoria(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("○ Falar com suporte", url=SUPORTE_LINK)],
-        [InlineKeyboardButton("← Voltar", callback_data="voltar")],
-    ])
-    await query.message.reply_text(
-        "◇ *Mentoria Wall Street Girls*\n\n"
-        "Para quem quer acelerar resultados com acompanhamento próximo.\n\n"
-        "  ◦ Desenvolvimento de mentalidade\n"
-        "  ◦ Direcionamento estratégico\n"
-        "  ◦ Acompanhamento individualizado\n\n"
-        "─────────────────────\n"
-        "Fale com o suporte para saber mais:",
-        parse_mode="Markdown",
-        reply_markup=keyboard,
-    )
- 
-# ── Pagar VIP / enviar comprovante ────────────────────────────────────────────
-async def cb_pagar_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    aguardando_comprovante.add(query.from_user.id)
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✦ Assinar Intel Premium — R$79,90", url=HOTMART_INTEL)],
-        [InlineKeyboardButton("✦ Assinar Live Trading — R$149,90", url=HOTMART_LT)],
-    ])
-    await query.message.reply_text(
-        "✦ *Acesso aos Grupos Premium*\n\n"
-        "1 — Escolha seu plano e efetue o pagamento\n"
-        "2 — Volte aqui e envie o comprovante (foto ou texto)\n"
-        "3 — Validamos e enviamos o link do grupo ✅\n\n"
-        "─────────────────────\n"
-        "⚠️ Após o pagamento, envie o comprovante aqui.\n\n"
-        "Dúvidas: @suportewsg",
-        parse_mode="Markdown",
-        reply_markup=keyboard,
-    )
- 
-# ── Registrar e notificar acesso ───────────────────────────────────────────────
-async def registrar_e_notificar(context, user_id, nome, username, via):
-    link_obj = await context.bot.create_chat_invite_link(
-        chat_id=VIP_GROUP_ID,
-        member_limit=1,
-        expire_date=datetime.datetime.now() + datetime.timedelta(hours=48),
-    )
-    link = link_obj.invite_link
- 
-    db = carregar_db()
-    db[str(user_id)] = {
-        "ativo":      True,
-        "nome":       nome,
-        "username":   username,
-        "via":        via,
-        "entrou_em":  datetime.datetime.now().isoformat(),
-        "renovar_em": (datetime.datetime.now() + datetime.timedelta(days=30)).isoformat(),
-    }
-    salvar_db(db)
- 
-    await context.bot.send_message(
-        chat_id=user_id,
-        text=(
-            "✦ *Acesso liberado!*\n\n"
-            "Bem-vindo(a) ao *Intel Zone*.\n\n"
-            "→ " + link + "\n\n"
-            "⚠️ Link de uso único — expira em 48h. Não compartilhe.\n\n"
-            "Qualquer dúvida: @suportewsg"
-        ),
-        parse_mode="Markdown",
-    )
-    await context.bot.send_message(
-        chat_id=ADMIN_ID,
-        text=(
-            f"✦ *Novo membro — Intel Zone*\n\n"
-            f"👤  {nome}\n"
-            f"📎  {username}\n"
-            f"🆔  {user_id}\n"
-            f"📥  {via}\n"
-            f"🕐  {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
-        ),
-    )
- 
-async def enviar_para_suporte_admin(context, user_id, nome, username, via, mensagem_extra=""):
-    db = carregar_db()
-    db.setdefault(str(user_id), {}).update({"nome": nome, "username": username, "ativo": False})
-    salvar_db(db)
- 
-    keyboard = [[
-        InlineKeyboardButton("✅ Liberar acesso", callback_data=f"liberar_{user_id}"),
-        InlineKeyboardButton("✕ Recusar",         callback_data=f"recusar_{user_id}"),
-    ]]
-    texto = (
-        f"◆ *Nova solicitação de acesso*\n\n"
-        f"👤  {nome}\n"
-        f"📎  {username}\n"
-        f"🆔  {user_id}\n"
-        f"📥  {via}\n"
-    )
-    if mensagem_extra:
-        texto += f"📝  {mensagem_extra}\n"
-    texto += "\n─────────────────────\n👇 Verifique e libere o acesso:"
- 
-    await context.bot.send_message(
-        chat_id=ADMIN_ID,
-        text=texto,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
     )
  
 # ── Voltar ao menu ─────────────────────────────────────────────────────────────
@@ -447,53 +368,17 @@ async def cb_voltar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.message.reply_text(
-        "Escolha como quer continuar:",
+        "👇 Escolha como quer continuar:",
         reply_markup=_menu_keyboard(),
     )
  
-# ── Callback genérico (liberar/recusar comprovante) ───────────────────────────
-async def escolha(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
- 
-    if query.data.startswith("liberar_"):
-        target_id = int(query.data.split("_")[1])
-        db        = carregar_db()
-        dados     = db.get(str(target_id), {})
-        try:
-            await registrar_e_notificar(
-                context, target_id,
-                dados.get("nome", str(target_id)),
-                dados.get("username", "-"),
-                dados.get("via", "-"),
-            )
-            await query.message.reply_text(f"✅ Acesso liberado para {dados.get('nome', target_id)}.")
-        except Exception as e:
-            await query.message.reply_text(f"✕ Erro: {e}")
- 
-    elif query.data.startswith("recusar_"):
-        target_id = int(query.data.split("_")[1])
-        await context.bot.send_message(
-            chat_id=target_id,
-            text=(
-                "✕ *Não foi possível validar seu acesso.*\n\n"
-                "Possíveis motivos:\n"
-                "  ◦ Comprovante não identificado\n"
-                "  ◦ Pagamento não confirmado\n\n"
-                "Fale com o suporte e resolvemos: @suportewsg"
-            ),
-            parse_mode="Markdown",
-        )
-        await query.message.reply_text("✕ Solicitação recusada.")
- 
-# ── Receber texto ──────────────────────────────────────────────────────────────
+# ── Receber texto (email para suporte de vendas) ───────────────────────────────
 async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user     = update.message.from_user
     user_id  = user.id
     nome     = user.full_name
     username = _username(user)
  
-    # Aguardando email para suporte de vendas
     if user_id in aguardando_email:
         email   = update.message.text.strip()
         aguardando_email.pop(user_id)
@@ -511,64 +396,21 @@ async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         salvar_db(db)
  
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"◆ Falar com {atendente_nome}", url=f"https://t.me/{atendente_user}")],
+            [InlineKeyboardButton(f"💬 Falar com {atendente_nome}", url=f"https://t.me/{atendente_user}")],
         ])
         await update.message.reply_text(
-            f"✦ *Tudo certo!*\n\n"
-            f"*{atendente_nome}* está pronto(a) para te atender.\n\n"
-            f"─────────────────────",
+            f"✅ *Tudo certo!*\n\n"
+            f"*{atendente_nome}* está pronto(a) para te atender agora.\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
             parse_mode="Markdown",
             reply_markup=keyboard,
         )
         return
  
-    # Aguardando comprovante
-    if user_id in aguardando_comprovante:
-        aguardando_comprovante.discard(user_id)
-        db = carregar_db()
-        db.setdefault(str(user_id), {}).update({
-            "nome": nome, "username": username,
-            "ativo": False, "via": "Hotmart",
-        })
-        salvar_db(db)
-        await enviar_para_suporte_admin(context, user_id, nome, username, "Hotmart")
-        await update.message.forward(chat_id=ADMIN_ID)
-        await update.message.reply_text(
-            "✦ *Comprovante recebido.*\n\n"
-            "Estamos verificando e liberamos seu acesso em breve.\n\n"
-            "Dúvidas: @suportewsg",
-            parse_mode="Markdown",
-        )
-        return
- 
     await update.message.reply_text(
-        "Use o menu abaixo para navegar:",
+        "👇 Use o menu abaixo para navegar:",
         reply_markup=_menu_keyboard(),
     )
- 
-# ── Receber foto ───────────────────────────────────────────────────────────────
-async def receber_foto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user     = update.message.from_user
-    user_id  = user.id
-    nome     = user.full_name
-    username = _username(user)
- 
-    if user_id in aguardando_comprovante:
-        aguardando_comprovante.discard(user_id)
-        db = carregar_db()
-        db.setdefault(str(user_id), {}).update({
-            "nome": nome, "username": username,
-            "ativo": False, "via": "Hotmart",
-        })
-        salvar_db(db)
-        await enviar_para_suporte_admin(context, user_id, nome, username, "Hotmart")
-        await update.message.forward(chat_id=ADMIN_ID)
-        await update.message.reply_text(
-            "✦ *Comprovante recebido.*\n\n"
-            "Estamos verificando e liberamos seu acesso em breve.\n\n"
-            "Dúvidas: @suportewsg",
-            parse_mode="Markdown",
-        )
  
 # ── /membros (admin) ───────────────────────────────────────────────────────────
 async def listar_membros(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -578,7 +420,7 @@ async def listar_membros(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not db:
         await update.message.reply_text("Nenhum membro registrado.")
         return
-    texto = "◆ *Membros registrados*\n\n"
+    texto = "📋 *Membros registrados*\n\n"
     for i, (uid, d) in enumerate(db.items(), 1):
         status = "✅ Ativo" if d.get("ativo") else "⏳ Pendente"
         texto += (
@@ -592,32 +434,169 @@ async def listar_membros(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if texto:
         await update.message.reply_text(texto, parse_mode="Markdown")
  
+# ══════════════════════════════════════════════════════════════════════════════
+# WEBHOOK HOTMART — pagamento automático
+# ══════════════════════════════════════════════════════════════════════════════
+"""
+CONFIGURAÇÃO NO HOTMART:
+1. Hotmart → Ferramentas → Webhooks → Adicionar webhook
+2. URL: https://SEU-DOMINIO-RAILWAY.railway.app/hotmart-webhook
+3. Chave secreta: o valor de WEBHOOK_SECRET (ex: wsg2026)
+4. Eventos: PURCHASE_APPROVED e PURCHASE_CANCELED
+ 
+O Hotmart envia um header 'X-Hotmart-Hottok' com a chave secreta.
+O bot valida esse header antes de processar.
+"""
+ 
+flask_app = Flask(__name__)
+bot_app   = None  # preenchido no main()
+ 
+@flask_app.route("/hotmart-webhook", methods=["POST"])
+def hotmart_webhook():
+    # Valida chave secreta
+    token = flask_request.headers.get("X-Hotmart-Hottok", "")
+    if token != WEBHOOK_SECRET:
+        return {"error": "unauthorized"}, 401
+ 
+    data  = flask_request.json or {}
+    event = data.get("event", "")
+ 
+    # Extrai dados do comprador
+    buyer    = data.get("data", {}).get("buyer", {})
+    nome     = buyer.get("name", "Desconhecido")
+    email    = buyer.get("email", "-")
+    # Hotmart não fornece user_id do Telegram — salvamos por email para lookup futuro
+    produto  = data.get("data", {}).get("product", {}).get("name", "-")
+ 
+    if event == "PURCHASE_APPROVED":
+        asyncio.run_coroutine_threadsafe(
+            _hotmart_aprovado(nome, email, produto),
+            bot_app.loop,
+        )
+ 
+    elif event == "PURCHASE_CANCELED":
+        asyncio.run_coroutine_threadsafe(
+            _hotmart_cancelado(nome, email, produto),
+            bot_app.loop,
+        )
+ 
+    return {"ok": True}, 200
+ 
+async def _hotmart_aprovado(nome: str, email: str, produto: str):
+    """Notifica admin sobre nova compra aprovada."""
+    db = carregar_db()
+ 
+    # Procura user_id pelo email (se a pessoa já interagiu com o bot)
+    telegram_id = None
+    for uid, dados in db.items():
+        if dados.get("email") == email:
+            telegram_id = int(uid)
+            break
+ 
+    # Atualiza DB
+    chave = str(telegram_id) if telegram_id else f"email_{email}"
+    db[chave] = db.get(chave, {})
+    db[chave].update({
+        "ativo":     True,
+        "nome":      nome,
+        "email":     email,
+        "via":       f"Hotmart — {produto}",
+        "entrou_em": datetime.datetime.now().isoformat(),
+        "renovar_em": (datetime.datetime.now() + datetime.timedelta(days=30)).isoformat(),
+    })
+    salvar_db(db)
+ 
+    # Se temos o Telegram ID, cria link e envia automaticamente
+    if telegram_id:
+        try:
+            link_obj = await bot_app.bot.create_chat_invite_link(
+                chat_id=VIP_GROUP_ID,
+                member_limit=1,
+                expire_date=datetime.datetime.now() + datetime.timedelta(hours=48),
+            )
+            await bot_app.bot.send_message(
+                chat_id=telegram_id,
+                text=(
+                    "🎉 *Pagamento confirmado! Acesso liberado.*\n\n"
+                    f"Bem-vindo(a) ao *{produto}*!\n\n"
+                    "👇 Clique no link abaixo para entrar no grupo:\n"
+                    + link_obj.invite_link + "\n\n"
+                    "⚠️  Link de uso único — expira em 48h. Não compartilhe.\n\n"
+                    "Qualquer dúvida: @suportewsg"
+                ),
+                parse_mode="Markdown",
+            )
+            db[chave]["link_enviado"] = True
+            salvar_db(db)
+            aviso_admin = f"✅ Link enviado automaticamente para {nome}."
+        except Exception as e:
+            aviso_admin = f"⚠️ Não foi possível enviar link automático: {e}\nLibere manualmente."
+    else:
+        aviso_admin = (
+            "⚠️ *Telegram ID não encontrado.*\n"
+            "A pessoa ainda não interagiu com o bot.\n"
+            "Localize pelo email e libere manualmente."
+        )
+ 
+    await bot_app.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=(
+            f"🟢 *Nova compra aprovada — Hotmart*\n\n"
+            f"👤  {nome}\n"
+            f"✉️  {email}\n"
+            f"📦  {produto}\n"
+            f"🕐  {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+            f"{aviso_admin}"
+        ),
+        parse_mode="Markdown",
+    )
+ 
+async def _hotmart_cancelado(nome: str, email: str, produto: str):
+    """Notifica admin sobre cancelamento."""
+    await bot_app.bot.send_message(
+        chat_id=ADMIN_ID,
+        text=(
+            f"🔴 *Cancelamento — Hotmart*\n\n"
+            f"👤  {nome}\n"
+            f"✉️  {email}\n"
+            f"📦  {produto}\n"
+            f"🕐  {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n\n"
+            f"Verifique e remova o acesso do grupo manualmente."
+        ),
+        parse_mode="Markdown",
+    )
+ 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+    global bot_app
  
-    app.add_handler(CommandHandler("start",   start))
-    app.add_handler(CommandHandler("membros", listar_membros))
-    app.add_handler(CommandHandler("liberar", liberar_calendly))
+    bot_app = ApplicationBuilder().token(TOKEN).build()
  
-    app.add_handler(CallbackQueryHandler(cb_vip,                       pattern="^vip$"))
-    app.add_handler(CallbackQueryHandler(cb_grupos,                    pattern="^grupos$"))
-    app.add_handler(CallbackQueryHandler(cb_corretoras,                pattern="^corretoras$"))
-    app.add_handler(CallbackQueryHandler(cb_corretora_mexc,            pattern="^corretora_mexc$"))
-    app.add_handler(CallbackQueryHandler(cb_corretora_bingex,          pattern="^corretora_bingex$"))
-    app.add_handler(CallbackQueryHandler(cb_solicitar_calendly_mexc,   pattern="^solicitar_calendly_mexc$"))
-    app.add_handler(CallbackQueryHandler(cb_solicitar_calendly_bingex, pattern="^solicitar_calendly_bingex$"))
-    app.add_handler(CallbackQueryHandler(cb_suporte_vendas,            pattern="^suporte_vendas$"))
-    app.add_handler(CallbackQueryHandler(cb_conteudo,                  pattern="^conteudo$"))
-    app.add_handler(CallbackQueryHandler(cb_mentoria,                  pattern="^mentoria$"))
-    app.add_handler(CallbackQueryHandler(cb_pagar_vip,                 pattern="^pagar_vip$"))
-    app.add_handler(CallbackQueryHandler(cb_voltar,                    pattern="^voltar$"))
-    app.add_handler(CallbackQueryHandler(escolha))
+    bot_app.add_handler(CommandHandler("start",   start))
+    bot_app.add_handler(CommandHandler("membros", listar_membros))
+    bot_app.add_handler(CommandHandler("liberar", liberar_calendly))
  
-    app.add_handler(MessageHandler(filters.PHOTO,                      receber_foto))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,    receber_texto))
+    bot_app.add_handler(CallbackQueryHandler(cb_produto_lt,                pattern="^produto_lt$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_produto_intel,             pattern="^produto_intel$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_suporte_vendas,            pattern="^suporte_vendas$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_conteudo,                  pattern="^conteudo$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_um_a_um,                   pattern="^um_a_um$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_ver_corretoras,            pattern="^ver_corretoras$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_corretora_mexc,            pattern="^corretora_mexc$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_corretora_bingex,          pattern="^corretora_bingex$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_solicitar_calendly_mexc,   pattern="^solicitar_calendly_mexc$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_solicitar_calendly_bingex, pattern="^solicitar_calendly_bingex$"))
+    bot_app.add_handler(CallbackQueryHandler(cb_voltar,                    pattern="^voltar$"))
  
-    app.run_polling()
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, receber_texto))
+ 
+    # Inicia Flask em thread separada para receber webhooks do Hotmart
+    threading.Thread(
+        target=lambda: flask_app.run(host="0.0.0.0", port=PORT),
+        daemon=True,
+    ).start()
+ 
+    bot_app.run_polling()
  
 if __name__ == "__main__":
     main()
